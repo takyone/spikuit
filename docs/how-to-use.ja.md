@@ -222,6 +222,73 @@ Q: 関手が保存しなければならないものは何ですか？
 > ...
 ```
 
+### `/qabot` — 自己最適化RAGチャット
+
+会話を通じて改善するQ&Aボットを構築する。QABotSessionは関連ニューロンを
+検索し、フィードバックから学習 — 有用な結果をブーストし、不十分な結果を
+ペナルティする。
+
+**動作:**
+
+1. `ask()` がクエリを埋め込み、マッチするニューロンを検索（グラフ重み付きスコアリング）
+2. フォローアップクエリが前回と類似していれば、前回の結果を自動ペナルティ
+   （不十分だったという暗黙のシグナル）
+3. `accept()` で有用なニューロンをマーク — 将来のランキングをブースト
+4. `close()` で全フィードバックをDBにコミット（永続モード）
+
+**Agent CLI連携パターン:**
+
+QABotSessionが検索とフィードバックを担当、エージェントがLLM推論を提供:
+
+```
+ユーザーの質問 → QABotSession.ask() → 検索結果
+                                          ↓
+                              エージェントがコンテキストをLLMに渡す
+                                          ↓
+                              LLMが回答を生成
+                                          ↓
+                              ユーザーフィードバック → accept() or フォローアップ
+```
+
+**フロー例:**
+
+```
+> /qabot
+
+何を知りたいですか？
+
+> 関手とは何ですか？
+
+3つの関連ニューロンが見つかりました:
+  1. 「関手」（類似度: 0.92）
+  2. 「圏論の基礎」（類似度: 0.78）
+  3. 「射」（類似度: 0.71）
+
+関手は圏の間の構造を保存する写像です。
+対象と射の両方を写し、合成と恒等射を保存します。
+
+> 役立ちますが、プログラミングでの関手は？
+
+[前回の結果を自動ペナルティ — 類似クエリは不十分だったことを示唆]
+3つの新しい結果:
+  1. 「Haskellの Functor」（類似度: 0.88）
+  2. 「fmap」（類似度: 0.75）
+  3. 「型クラス」（類似度: 0.69）
+
+プログラミングでは、Functorはfmapを提供する型クラスで...
+
+> Haskellの説明がまさに求めていたものです
+
+✅ 「Haskellの Functor」を受諾 — 将来の検索でブースト。
+```
+
+**永続 vs 一時:**
+
+- `persist=True`（デフォルト）: フィードバックは`close()`時にDBにコミット。
+  どのニューロンが有用だったかをセッション間で記憶する。
+- `persist=False`: フィードバックはメモリのみ。ワンショットクエリや
+  将来の検索に影響を与えずにテストする場合に使用。
+
 ## Python API
 
 カスタム連携、エージェント、LLMアダプター構築用。
@@ -311,4 +378,46 @@ items = await circuit.get_quiz_items("n-abc123", scaffold_level=ScaffoldLevel.NO
 
 # 削除
 await circuit.remove_quiz_item(item.id)
+```
+
+### QABotSession
+
+```python
+from spikuit_core import Circuit, QABotSession
+from spikuit_core.config import load_config
+from spikuit_core.embedder import create_embedder
+
+# Brainをロードしてcircuitを作成
+config = load_config()
+embedder = create_embedder(
+    config.embedder.provider,
+    base_url=config.embedder.base_url,
+    model=config.embedder.model,
+    dimension=config.embedder.dimension,
+)
+circuit = Circuit(db_path=config.db_path, embedder=embedder)
+await circuit.connect()
+
+# セッション作成（persistent = フィードバックがセッション間で持続）
+session = QABotSession(circuit, persist=True)
+
+# 質問 — スコア付き、重複排除済みの結果を返す
+results = await session.ask("関手とは何ですか？")
+for r in results:
+    print(f"[{r.neuron_id}] {r.content[:100]}")
+    # r.context_ids に1ホップ近傍（追加コンテキスト用）
+
+# 正のフィードバック — 有用なニューロンをブースト
+await session.accept([results[0].neuron_id])
+
+# フォローアップ — クエリが類似していれば前回結果を自動ペナルティ
+results = await session.ask("Haskellでの関手の例は？")
+
+# エージェントパターン: 検索結果をLLMに渡す
+context = "\n\n".join(r.content for r in results)
+# llm_answer = await my_llm(query=user_query, context=context)
+
+# 閉じる — ブーストをDBにコミット
+await session.close()
+await circuit.close()
 ```

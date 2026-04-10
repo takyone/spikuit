@@ -2,18 +2,47 @@
 
 全コマンド `--json` フラグ対応。
 
+## グローバルオプション
+
+ほとんどのコマンドで以下のフラグが使える:
+
+| オプション | 説明 |
+|-----------|------|
+| `--brain`, `-b` | Brainルートディレクトリ（自動探索を上書き） |
+| `--json` | マシンリーダブルなJSON出力 |
+
 ## Brain管理
 
 ### `spkt init`
 
-カレントディレクトリに `.spikuit/` Brainを初期化する。
+カレントディレクトリに新しいBrainを初期化する。
+フラグなしでは対話ウィザードを起動。
+`--json` または `--provider` を明示すると非対話で実行。
+
+```
+$ spkt init
+
+Brain name [my-project]:
+Configure embeddings? [y/N]: y
+  Providers: openai-compat, ollama
+  Provider [openai-compat]:
+  Base URL [http://localhost:1234/v1]:
+  Model [text-embedding-nomic-embed-text-v1.5]:
+  Dimension [768]:
+
+--- Summary ---
+...
+Create brain? [Y/n]:
+```
+
+非対話（スクリプト・エージェント向け）:
 
 ```bash
-spkt init                              # デフォルト（埋め込みなし）
-spkt init --name my-brain              # カスタム名
-spkt init -p openai-compat \           # 埋め込み付き
+spkt init -p none                      # 埋め込みなし
+spkt init --name my-brain -p openai-compat \
   --base-url http://localhost:1234/v1 \
   --model text-embedding-nomic-embed-text-v1.5
+spkt init -p ollama --json             # エージェント向けJSON出力
 ```
 
 ### `spkt config`

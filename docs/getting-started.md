@@ -10,25 +10,43 @@ uv sync --package spikuit-cli
 
 ## Initialize a Brain
 
-A brain is a project-local `.spikuit/` directory (like `.git/`) containing
-the config, database, and cache.
+A **Brain** is a self-contained knowledge space — like an Obsidian vault
+or a git repository. Each Brain has its own knowledge graph, configuration,
+and review schedule. You can have multiple Brains for different domains
+or projects.
+
+Run `spkt init` to start the interactive wizard:
+
+```
+$ spkt init
+
+Brain name [my-project]: math
+Configure embeddings? [y/N]: y
+  Providers: openai-compat, ollama
+  Provider [openai-compat]:
+  Base URL [http://localhost:1234/v1]:
+  Model [text-embedding-nomic-embed-text-v1.5]:
+  Dimension [768]:
+
+--- Summary ---
+Brain:    math
+Location: /home/user/math/.spikuit/
+Embedder: openai-compat
+  URL:    http://localhost:1234/v1
+  Model:  text-embedding-nomic-embed-text-v1.5
+  Dim:    768
+
+Create brain? [Y/n]:
+
+Initialized brain 'math' at /home/user/math/.spikuit/
+```
+
+You can also use flags for non-interactive setup:
 
 ```bash
-# Basic init (no embeddings)
-spkt init
-
-# With local embeddings (LM Studio)
 spkt init -p openai-compat \
   --base-url http://localhost:1234/v1 \
   --model text-embedding-nomic-embed-text-v1.5
-
-# With Ollama
-spkt init -p ollama \
-  --base-url http://localhost:11434 \
-  --model nomic-embed-text
-
-# Check config
-spkt config
 ```
 
 This creates:
@@ -39,6 +57,9 @@ This creates:
 ├── circuit.db     # SQLite database
 └── cache/         # Embedding cache
 ```
+
+Like git, `spkt` auto-discovers `.spikuit/` by walking up from the current
+directory. To operate on a different Brain, use `--brain <path>`.
 
 ## Add Knowledge
 

@@ -39,7 +39,7 @@ Traditional RAG treats the knowledge base as static — you index documents, the
 
 - **QABotSession**: Self-optimizing retrieval. Follow-up queries automatically penalize unhelpful prior results. Accepting results boosts them. The graph learns what's useful.
 - **LearnSession**: Conversational knowledge curation. Add neurons through dialogue, discover related concepts, create connections, merge duplicates. The conversation *is* the curation.
-- **TutorSession**: 1-on-1 scaffolded tutoring with hint progression, gap detection, and error explanation. (planned)
+- **TutorSession**: 1-on-1 scaffolded tutoring with hint progression, gap detection, and error explanation.
 
 The result: a RAG system that gets better *because you use it*, not just when you re-index.
 
@@ -74,8 +74,10 @@ git clone https://github.com/takyone/spikuit.git
 cd spikuit
 uv sync --package spikuit-cli
 
-# Initialize a brain (creates .spikuit/ in CWD)
+# Initialize a brain (interactive wizard)
 spkt init
+
+# Or non-interactive with flags
 spkt init -p openai-compat \
   --base-url http://localhost:1234/v1 \
   --model text-embedding-nomic-embed-text-v1.5
@@ -121,7 +123,7 @@ spkt visualize
 | `spkt quiz` | Interactive flashcard review session |
 | `spkt visualize` | Interactive graph visualization (HTML) |
 
-All commands support `--json` for machine-readable output.
+All commands support `--json` for machine-readable output and `--brain` to target a specific Brain.
 
 ## Architecture
 
@@ -152,12 +154,12 @@ spikuit/
 
 - **QABotSession**: RAG chat — LLM generates answers from retrieval results (negative feedback, accept, dedup, persistent/ephemeral)
 - **LearnSession**: Knowledge curation — add neurons, discover relations, merge duplicates through dialogue
-- **TutorSession**: 1-on-1 tutoring — scaffolded teaching, hint progression, gap detection, error explanation (planned)
+- **TutorSession**: 1-on-1 tutoring — scaffolded teaching, hint progression, gap detection, error explanation
 
 ### Quiz (evaluation tools)
 
 - **Flashcard** (core): Self-grade, no LLM
-- **AutoQuiz** (planned): LLM-generated questions, programmatic grading
+- **AutoQuiz**: LLM-generated questions, programmatic grading
 - 1 Quiz : N Neurons — QuizRequest has primary + supporting neurons, QuizResult has per-neuron grades
 
 ### How `fire()` works

@@ -45,20 +45,24 @@ uv run --package spikuit-core pytest spikuit-core/tests/test_propagation.py -v
 
 ## Brain Setup
 
+A Brain is a `.spikuit/` directory — like an Obsidian vault or `.git/`.
+Each Brain has its own graph, config, and review schedule. `spkt` auto-discovers
+`.spikuit/` by walking up from CWD. Use `--brain <path>` to target another Brain.
+
 ```bash
-spkt init                              # Create .spikuit/ in CWD
-spkt init -p openai-compat \           # With LM Studio embeddings
+spkt init                              # Interactive wizard
+spkt init -p openai-compat \           # Non-interactive with LM Studio
   --base-url http://localhost:1234/v1 \
   --model text-embedding-nomic-embed-text-v1.5
 spkt config                            # Show current brain config
 spkt embed-all                         # Backfill embeddings for existing neurons
 ```
 
-Config lives in `.spikuit/config.toml`. CLI auto-discovers `.spikuit/` by walking up from CWD.
+Config lives in `.spikuit/config.toml`.
 
 ## spkt CLI
 
-All commands support `--json` for machine-readable output.
+All commands support `--json` for machine-readable output and `--brain` to target a specific Brain.
 
 | Command | Purpose |
 |---------|---------|
@@ -105,11 +109,11 @@ All commands support `--json` for machine-readable output.
 ### Session layer (LLM-powered)
 - **QABotSession**: RAG chat — LLM generates answers from retrieval results (negative feedback, accept, dedup, persistent/ephemeral)
 - **LearnSession**: Knowledge curation — add neurons, discover relations, merge duplicates through dialogue
-- **TutorSession**: 1-on-1 tutoring — scaffolded teaching, hint progression, gap detection, error explanation (planned)
+- **TutorSession**: 1-on-1 tutoring — scaffolded teaching, hint progression, gap detection, error explanation
 
 ### Quiz (evaluation tools used by Sessions)
 - **Flashcard** (core): Self-grade, no LLM
-- **AutoQuiz** (planned): LLM-generated questions, programmatic grading
+- **AutoQuiz**: LLM-generated questions, programmatic grading
 - **1 Quiz : N Neurons**: QuizRequest has primary + supporting neurons, QuizResult has per-neuron grades
 
 ## Key Algorithms

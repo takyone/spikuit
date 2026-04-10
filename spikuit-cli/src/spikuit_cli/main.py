@@ -21,21 +21,14 @@ app = typer.Typer(
 )
 
 
-def _load_brain_config(db: Path | None = None) -> BrainConfig:
-    """Load config from .spikuit/ or use explicit db path."""
-    if db is not None:
-        # Explicit --db overrides config discovery
-        config = BrainConfig()
-        config.root = db.parent
-        return config
-    return load_config()
+def _load_brain_config(brain: Path | None = None) -> BrainConfig:
+    """Load config from .spikuit/ or use explicit brain root."""
+    return load_config(brain)
 
 
-def _get_circuit(db: Path | None = None) -> Circuit:
-    """Create a Circuit from config or explicit db path."""
-    if db is not None:
-        return Circuit(db_path=db)
-    config = load_config()
+def _get_circuit(brain: Path | None = None) -> Circuit:
+    """Create a Circuit from brain config."""
+    config = load_config(brain)
     embedder = create_embedder(
         config.embedder.provider,
         base_url=config.embedder.base_url,
@@ -93,16 +86,72 @@ def _neuron_dict(n: Neuron, circuit: Circuit) -> dict:
 # -------------------------------------------------------------------
 
 
+_VALID_PROVIDERS = ("openai-compat", "ollama")
+
+_PROVIDER_DEFAULTS = {
+    "openai-compat": {
+        "base_url": "http://localhost:1234/v1",
+        "model": "text-embedding-nomic-embed-text-v1.5",
+    },
+    "ollama": {
+        "base_url": "http://localhost:11434",
+        "model": "nomic-embed-text",
+    },
+}
+
+
 @app.command()
 def init(
     name: Optional[str] = typer.Option(None, "--name", "-n", help="Brain name (defaults to directory name)"),
-    provider: str = typer.Option("none", "--provider", "-p", help="Embedder: none|openai-compat|ollama"),
+    provider: Optional[str] = typer.Option(None, "--provider", "-p", help="Embedder: none|openai-compat|ollama"),
     base_url: str = typer.Option("", "--base-url", help="Embedder API base URL"),
     model: str = typer.Option("", "--model", "-m", help="Embedding model name"),
     dimension: int = typer.Option(768, "--dimension", "-d", help="Embedding dimension"),
-    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
+    as_json: bool = typer.Option(False, "--json", help="Non-interactive JSON output"),
 ) -> None:
-    """Initialize a new .spikuit/ brain in the current directory."""
+    """Initialize a new brain in the current directory.
+
+    Without flags, starts an interactive wizard.
+    With --json or explicit --provider, runs non-interactively.
+    """
+    interactive = not as_json and provider is None
+
+    if interactive:
+        default_name = Path.cwd().name
+        name = typer.prompt("Brain name", default=default_name)
+
+        if typer.confirm("Configure embeddings?", default=False):
+            typer.echo(f"  Providers: {', '.join(_VALID_PROVIDERS)}")
+            while True:
+                emb_provider = typer.prompt("  Provider", default="openai-compat")
+                if emb_provider in _VALID_PROVIDERS:
+                    break
+                typer.echo(f"  Invalid provider. Choose from: {', '.join(_VALID_PROVIDERS)}")
+
+            defaults = _PROVIDER_DEFAULTS[emb_provider]
+            base_url = typer.prompt("  Base URL", default=defaults["base_url"])
+            model = typer.prompt("  Model", default=defaults["model"])
+            dimension = int(typer.prompt("  Dimension", default="768"))
+            provider = emb_provider
+        else:
+            provider = "none"
+
+        typer.echo("")
+        typer.echo("--- Summary ---")
+        typer.echo(f"Brain:    {name}")
+        typer.echo(f"Location: {Path.cwd() / '.spikuit/'}")
+        typer.echo(f"Embedder: {provider}")
+        if provider != "none":
+            typer.echo(f"  URL:    {base_url}")
+            typer.echo(f"  Model:  {model}")
+            typer.echo(f"  Dim:    {dimension}")
+
+        if not typer.confirm("\nCreate brain?", default=True):
+            raise typer.Abort()
+    else:
+        if provider is None:
+            provider = "none"
+
     try:
         config = init_brain(
             name=name,
@@ -124,7 +173,7 @@ def init(
             "name": config.name,
         }, use_json=True)
     else:
-        typer.echo(f"Initialized brain '{config.name}' at {config.spikuit_dir}/")
+        typer.echo(f"\nInitialized brain '{config.name}' at {config.spikuit_dir}/")
         typer.echo(f"  config: {config.config_path}")
         typer.echo(f"  db:     {config.db_path}")
         if config.embedder.provider != "none":
@@ -181,12 +230,12 @@ def config(
 @app.command(name="embed-all")
 def embed_all(
     as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
-    db: Optional[Path] = typer.Option(None, "--db", help="Database path (overrides .spikuit/ discovery)"),
+    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
 ) -> None:
     """Embed all neurons that don't have embeddings yet (backfill)."""
 
     async def _embed_all():
-        circuit = _get_circuit(db)
+        circuit = _get_circuit(brain)
         await circuit.connect()
         try:
             if circuit._embedder is None:
@@ -214,12 +263,12 @@ def add(
     type: Optional[str] = typer.Option(None, "--type", "-t", help="Neuron type"),
     domain: Optional[str] = typer.Option(None, "--domain", "-d", help="Domain tag"),
     as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
-    db: Optional[Path] = typer.Option(None, "--db", help="Database path (overrides .spikuit/ discovery)"),
+    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
 ) -> None:
     """Add a new Neuron to the circuit."""
 
     async def _add():
-        circuit = _get_circuit(db)
+        circuit = _get_circuit(brain)
         await circuit.connect()
         try:
             real_content = content.encode().decode("unicode_escape")
@@ -252,7 +301,7 @@ def fire(
     neuron_id: str = typer.Argument(..., help="Neuron ID to fire"),
     grade: str = typer.Option("fire", "--grade", "-g", help="Grade: miss|weak|fire|strong"),
     as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
-    db: Optional[Path] = typer.Option(None, "--db", help="Database path (overrides .spikuit/ discovery)"),
+    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
 ) -> None:
     """Fire a spike (record a review) on a Neuron."""
     g = _GRADE_MAP.get(grade.lower())
@@ -261,7 +310,7 @@ def fire(
         raise typer.Exit(1)
 
     async def _fire():
-        circuit = _get_circuit(db)
+        circuit = _get_circuit(brain)
         await circuit.connect()
         try:
             neuron = await circuit.get_neuron(neuron_id)
@@ -298,12 +347,12 @@ def fire(
 def due(
     limit: int = typer.Option(20, "--limit", "-n", help="Max neurons to show"),
     as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
-    db: Optional[Path] = typer.Option(None, "--db", help="Database path (overrides .spikuit/ discovery)"),
+    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
 ) -> None:
     """Show neurons due for review."""
 
     async def _due():
-        circuit = _get_circuit(db)
+        circuit = _get_circuit(brain)
         await circuit.connect()
         try:
             ids = await circuit.due_neurons(limit=limit)
@@ -341,12 +390,12 @@ def retrieve(
     query: str = typer.Argument(..., help="Search query"),
     limit: int = typer.Option(10, "--limit", "-n", help="Max results"),
     as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
-    db: Optional[Path] = typer.Option(None, "--db", help="Database path (overrides .spikuit/ discovery)"),
+    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
 ) -> None:
     """Retrieve neurons matching a query (graph-weighted scoring)."""
 
     async def _retrieve():
-        circuit = _get_circuit(db)
+        circuit = _get_circuit(brain)
         await circuit.connect()
         try:
             results = await circuit.retrieve(query, limit=limit)
@@ -379,12 +428,12 @@ def list_neurons(
     domain: Optional[str] = typer.Option(None, "--domain", "-d", help="Filter by domain"),
     limit: int = typer.Option(50, "--limit", "-n", help="Max neurons to show"),
     as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
-    db: Optional[Path] = typer.Option(None, "--db", help="Database path (overrides .spikuit/ discovery)"),
+    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
 ) -> None:
     """List neurons in the circuit."""
 
     async def _list():
-        circuit = _get_circuit(db)
+        circuit = _get_circuit(brain)
         await circuit.connect()
         try:
             kwargs = {"limit": limit}
@@ -426,7 +475,7 @@ def link(
     type: str = typer.Option("relates_to", "--type", "-t", help="Synapse type: requires|extends|contrasts|relates_to"),
     weight: float = typer.Option(0.5, "--weight", "-w", help="Initial weight"),
     as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
-    db: Optional[Path] = typer.Option(None, "--db", help="Database path (overrides .spikuit/ discovery)"),
+    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
 ) -> None:
     """Create a synapse between two neurons."""
     try:
@@ -436,7 +485,7 @@ def link(
         raise typer.Exit(1)
 
     async def _link():
-        circuit = _get_circuit(db)
+        circuit = _get_circuit(brain)
         await circuit.connect()
         try:
             created = await circuit.add_synapse(pre, post, syn_type, weight=weight)
@@ -459,12 +508,12 @@ def link(
 @app.command()
 def stats(
     as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
-    db: Optional[Path] = typer.Option(None, "--db", help="Database path (overrides .spikuit/ discovery)"),
+    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
 ) -> None:
     """Show circuit statistics."""
 
     async def _stats():
-        circuit = _get_circuit(db)
+        circuit = _get_circuit(brain)
         await circuit.connect()
         try:
             s = await circuit.stats()
@@ -490,12 +539,12 @@ def stats(
 def inspect(
     neuron_id: str = typer.Argument(..., help="Neuron ID to inspect"),
     as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
-    db: Optional[Path] = typer.Option(None, "--db", help="Database path (overrides .spikuit/ discovery)"),
+    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
 ) -> None:
     """Inspect a neuron: content, FSRS state, pressure, neighbors."""
 
     async def _inspect():
-        circuit = _get_circuit(db)
+        circuit = _get_circuit(brain)
         await circuit.connect()
         try:
             neuron = await circuit.get_neuron(neuron_id)
@@ -546,12 +595,12 @@ def inspect(
 def quiz(
     limit: int = typer.Option(10, "--limit", "-n", help="Max neurons per session"),
     as_json: bool = typer.Option(False, "--json", help="Output as JSON (non-interactive, dump quiz items)"),
-    db: Optional[Path] = typer.Option(None, "--db", help="Database path (overrides .spikuit/ discovery)"),
+    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
 ) -> None:
     """Run an interactive flashcard review session."""
 
     async def _quiz():
-        circuit = _get_circuit(db)
+        circuit = _get_circuit(brain)
         await circuit.connect()
         try:
             fc = Flashcard(circuit)
@@ -647,13 +696,13 @@ def quiz(
 def visualize(
     output: Path = typer.Option("circuit.html", "--output", "-o", help="Output HTML path"),
     open_browser: bool = typer.Option(True, "--open/--no-open", help="Open in browser"),
-    db: Optional[Path] = typer.Option(None, "--db", help="Database path (overrides .spikuit/ discovery)"),
+    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
 ) -> None:
     """Generate an interactive graph visualization (HTML)."""
     from pyvis.network import Network as PyvisNetwork
 
     async def _visualize():
-        circuit = _get_circuit(db)
+        circuit = _get_circuit(brain)
         await circuit.connect()
         try:
             graph = circuit.graph

@@ -2,18 +2,46 @@
 
 All commands support `--json` for machine-readable output.
 
+## Global Options
+
+Most commands accept these flags:
+
+| Option | Description |
+|--------|-------------|
+| `--brain`, `-b` | Brain root directory (overrides auto-discovery) |
+| `--json` | Machine-readable JSON output |
+
 ## Brain Management
 
 ### `spkt init`
 
-Initialize a new `.spikuit/` brain in the current directory.
+Initialize a new Brain in the current directory. Without flags, starts an
+interactive wizard. With `--json` or explicit `--provider`, runs non-interactively.
+
+```
+$ spkt init
+
+Brain name [my-project]:
+Configure embeddings? [y/N]: y
+  Providers: openai-compat, ollama
+  Provider [openai-compat]:
+  Base URL [http://localhost:1234/v1]:
+  Model [text-embedding-nomic-embed-text-v1.5]:
+  Dimension [768]:
+
+--- Summary ---
+...
+Create brain? [Y/n]:
+```
+
+Non-interactive (for scripts and agents):
 
 ```bash
-spkt init                              # Default (no embeddings)
-spkt init --name my-brain              # Custom name
-spkt init -p openai-compat \           # With embeddings
+spkt init -p none                      # No embeddings
+spkt init --name my-brain -p openai-compat \
   --base-url http://localhost:1234/v1 \
   --model text-embedding-nomic-embed-text-v1.5
+spkt init -p ollama --json             # JSON output for agents
 ```
 
 ### `spkt config`

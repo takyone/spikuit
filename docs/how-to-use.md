@@ -222,6 +222,74 @@ Q: What must a Functor preserve?
 > ...
 ```
 
+### `/qabot` — Self-Optimizing RAG Chat
+
+Build a Q&A bot that improves through conversation. QABotSession retrieves
+relevant neurons and learns from feedback — boosting helpful results and
+penalizing unhelpful ones.
+
+**What happens:**
+
+1. `ask()` embeds your query and retrieves matching neurons (graph-weighted scoring)
+2. If a follow-up query is similar to a previous one, prior results are
+   automatically penalized (implicit signal they were insufficient)
+3. `accept()` marks neurons as helpful — boosts their future ranking
+4. `close()` commits all feedback to the database (persistent mode)
+
+**Agent CLI integration pattern:**
+
+QABotSession handles retrieval and feedback; the agent provides LLM reasoning:
+
+```
+User question → QABotSession.ask() → retrieval results
+                                          ↓
+                              Agent passes context to LLM
+                                          ↓
+                              LLM generates answer
+                                          ↓
+                              User feedback → accept() or follow-up
+```
+
+**Example flow:**
+
+```
+> /qabot
+
+What would you like to know?
+
+> What is a functor?
+
+Found 3 relevant neurons:
+  1. "Functor" (similarity: 0.92)
+  2. "Category Theory Basics" (similarity: 0.78)
+  3. "Morphism" (similarity: 0.71)
+
+A functor is a structure-preserving mapping between categories.
+It maps both objects and morphisms while preserving composition
+and identity.
+
+> That's helpful, but what about functors in programming?
+
+[Prior results auto-penalized — similar query implies they weren't enough]
+Found 3 new results:
+  1. "Functor in Haskell" (similarity: 0.88)
+  2. "fmap" (similarity: 0.75)
+  3. "Typeclass" (similarity: 0.69)
+
+In programming, a Functor is a type class that provides fmap...
+
+> Great, the Haskell explanation was exactly what I needed
+
+✅ Accepted "Functor in Haskell" — boosted for future retrieval.
+```
+
+**Persistent vs Ephemeral:**
+
+- `persist=True` (default): feedback is committed to the database on `close()`.
+  The graph remembers which neurons were helpful across sessions.
+- `persist=False`: feedback stays in memory only. Useful for one-off queries
+  or testing without affecting future retrieval.
+
 ## Python API
 
 For building custom integrations, agents, or LLM adapters.
@@ -311,4 +379,46 @@ items = await circuit.get_quiz_items("n-abc123", scaffold_level=ScaffoldLevel.NO
 
 # Delete
 await circuit.remove_quiz_item(item.id)
+```
+
+### QABotSession
+
+```python
+from spikuit_core import Circuit, QABotSession
+from spikuit_core.config import load_config
+from spikuit_core.embedder import create_embedder
+
+# Load brain and create circuit
+config = load_config()
+embedder = create_embedder(
+    config.embedder.provider,
+    base_url=config.embedder.base_url,
+    model=config.embedder.model,
+    dimension=config.embedder.dimension,
+)
+circuit = Circuit(db_path=config.db_path, embedder=embedder)
+await circuit.connect()
+
+# Create session (persistent = feedback survives across sessions)
+session = QABotSession(circuit, persist=True)
+
+# Ask — returns scored, deduplicated results
+results = await session.ask("What is a functor?")
+for r in results:
+    print(f"[{r.neuron_id}] {r.content[:100]}")
+    # r.context_ids has 1-hop neighbors for additional context
+
+# Positive feedback — boost helpful neurons
+await session.accept([results[0].neuron_id])
+
+# Follow-up — auto-penalizes prior results if query is similar
+results = await session.ask("functor examples in Haskell?")
+
+# Agent pattern: pass retrieval results to LLM
+context = "\n\n".join(r.content for r in results)
+# llm_answer = await my_llm(query=user_query, context=context)
+
+# Close — commits boosts to DB
+await session.close()
+await circuit.close()
 ```

@@ -141,6 +141,48 @@ Additionally identifies:
 
 ---
 
+## Brain
+
+A **Brain** is a self-contained knowledge space — like an
+[Obsidian vault](https://obsidian.md/) or a git repository.
+Each Brain lives in a `.spikuit/` directory and contains its own
+knowledge graph, configuration, and review schedule.
+
+```
+my-project/
+└── .spikuit/
+    ├── config.toml    # Brain configuration (name, embedder)
+    ├── circuit.db     # SQLite database (neurons, synapses, FSRS)
+    └── cache/         # Embedding cache
+```
+
+### Multiple Brains
+
+You can have as many Brains as you want — one per project, domain, or topic.
+Each Brain is independent: its own neurons, synapses, and review history.
+
+```bash
+~/math/.spikuit/      # Category theory, algebra
+~/french/.spikuit/    # French vocabulary and grammar
+~/work/.spikuit/      # Work-related knowledge
+```
+
+### Discovery
+
+Like git, `spkt` walks up from the current directory to find `.spikuit/`.
+Run any command from within a Brain directory (or a subdirectory) and it
+just works. To operate on a different Brain, use `--brain`:
+
+```bash
+# From inside the Brain directory
+spkt due
+
+# From anywhere, targeting a specific Brain
+spkt due --brain ~/math
+```
+
+---
+
 ## Architecture
 
 ```
@@ -170,12 +212,12 @@ spikuit/
 
 - **QABotSession**: RAG chat — LLM generates answers from retrieval results (negative feedback, accept, dedup, persistent/ephemeral)
 - **LearnSession**: Knowledge curation — add neurons, discover relations, merge duplicates through dialogue
-- **TutorSession**: 1-on-1 tutoring — scaffolded teaching, hint progression, gap detection, error explanation (planned)
+- **TutorSession**: 1-on-1 tutoring — scaffolded teaching, hint progression, gap detection, error explanation
 
 ### Quiz (evaluation tools used by Sessions)
 
 - **Flashcard** (core): Self-grade, no LLM
-- **AutoQuiz** (planned): LLM-generated questions, programmatic grading
+- **AutoQuiz**: LLM-generated questions, programmatic grading
 - 1 Quiz : N Neurons — QuizRequest has primary + supporting neurons, QuizResult has per-neuron grades
 
 ## Algorithms in Spikuit
@@ -234,7 +276,7 @@ Conversational knowledge curation:
 - `search()`: graph-weighted retrieval
 - `merge()`: combine duplicates (transfer synapses + content)
 
-### TutorSession (planned)
+### TutorSession
 
 1-on-1 scaffolded tutoring:
 

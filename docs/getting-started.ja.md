@@ -10,25 +10,42 @@ uv sync --package spikuit-cli
 
 ## Brainの初期化
 
-Brainはプロジェクトローカルな `.spikuit/` ディレクトリ（`.git/` のようなもの）で、
-設定・データベース・キャッシュを含みます。
+**Brain**は自己完結型のナレッジ空間 — Obsidian vaultやgitリポジトリのようなもの。
+各Brainは独自のナレッジグラフ、設定、復習スケジュールを持つ。
+ドメインやプロジェクトごとに複数のBrainを持てる。
+
+`spkt init` で対話ウィザードを起動:
+
+```
+$ spkt init
+
+Brain name [my-project]: math
+Configure embeddings? [y/N]: y
+  Providers: openai-compat, ollama
+  Provider [openai-compat]:
+  Base URL [http://localhost:1234/v1]:
+  Model [text-embedding-nomic-embed-text-v1.5]:
+  Dimension [768]:
+
+--- Summary ---
+Brain:    math
+Location: /home/user/math/.spikuit/
+Embedder: openai-compat
+  URL:    http://localhost:1234/v1
+  Model:  text-embedding-nomic-embed-text-v1.5
+  Dim:    768
+
+Create brain? [Y/n]:
+
+Initialized brain 'math' at /home/user/math/.spikuit/
+```
+
+フラグを使えば非対話で初期化もできる:
 
 ```bash
-# 基本の初期化（埋め込みなし）
-spkt init
-
-# ローカル埋め込み付き（LM Studio）
 spkt init -p openai-compat \
   --base-url http://localhost:1234/v1 \
   --model text-embedding-nomic-embed-text-v1.5
-
-# Ollama
-spkt init -p ollama \
-  --base-url http://localhost:11434 \
-  --model nomic-embed-text
-
-# 設定確認
-spkt config
 ```
 
 作成されるもの:
@@ -39,6 +56,9 @@ spkt config
 ├── circuit.db     # SQLiteデータベース
 └── cache/         # 埋め込みキャッシュ
 ```
+
+gitと同様に、`spkt`はカレントディレクトリから上に辿って`.spikuit/`を自動探索する。
+別のBrainを操作するには `--brain <パス>` を使う。
 
 ## 知識を追加する
 
