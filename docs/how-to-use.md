@@ -71,8 +71,42 @@ spkt visualize -o graph.html
 
 ## Conversational Sessions (Skills)
 
-Sessions are LLM-powered interaction modes best run as Claude Code skills.
-They wrap the core engine with conversational interfaces.
+Sessions are LLM-powered interaction modes designed to run inside
+**Agent CLIs** — tools like [Claude Code](https://docs.anthropic.com/en/docs/claude-code),
+[Codex](https://openai.com/index/introducing-codex/), or similar coding agents
+that combine LLM reasoning with shell access.
+
+### Why Agent CLIs?
+
+Spikuit's core engine is LLM-independent — `spkt` commands work standalone.
+But sessions like tutoring, curation, and review are *conversational*:
+they need an LLM to generate questions, grade answers, discover relations,
+and adapt to your responses. Agent CLIs provide exactly this:
+
+- **Shell access**: the agent calls `spkt` commands or the Python API directly
+- **LLM reasoning**: the agent generates quiz questions, evaluates answers, suggests links
+- **Conversation memory**: multi-turn dialogue (hints → retry → next question)
+- **Skills/tools**: register session workflows as reusable slash commands
+
+In Claude Code, sessions are registered as **skills** — type `/tutor` and the
+agent handles the full tutoring loop. In other Agent CLIs, the same Python API
+powers equivalent integrations.
+
+```
+┌──────────────────────────────────────────┐
+│  Agent CLI (Claude Code, Codex, etc.)    │
+│  ┌────────────────┐  ┌───────────────┐   │
+│  │  LLM reasoning │  │  Shell access │   │
+│  └───────┬────────┘  └───────┬───────┘   │
+│          │    Skills / Tools │            │
+│          └────────┬──────────┘            │
+│                   ▼                      │
+│        spikuit-core Python API           │
+│   (Circuit, AutoQuiz, TutorSession)      │
+│                   │                      │
+│              spkt CLI                    │
+└──────────────────────────────────────────┘
+```
 
 ### `/tutor` — Scaffolded Tutoring
 

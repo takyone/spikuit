@@ -71,8 +71,42 @@ spkt visualize -o graph.html
 
 ## 会話型セッション（Skills）
 
-セッションはLLM駆動のインタラクションモード。
-Claude CodeのSkillとして実行するのが最適。
+セッションはLLM駆動のインタラクションモードで、
+**Agent CLI** — [Claude Code](https://docs.anthropic.com/en/docs/claude-code)や
+[Codex](https://openai.com/index/introducing-codex/)などのコーディングエージェント
+と組み合わせて使うことを想定している。
+
+### なぜAgent CLIなのか？
+
+Spikuitのコアエンジンはlightweight。`spkt` コマンドは単体で動く。
+だがチュータリング、キュレーション、復習といったセッションは*会話的*で、
+問題生成、回答採点、関連発見、応答への適応にLLMが必要になる。
+Agent CLIはまさにこれを提供する:
+
+- **シェルアクセス**: エージェントが `spkt` コマンドやPython APIを直接呼び出す
+- **LLM推論**: 問題生成、回答評価、リンク提案
+- **会話メモリ**: マルチターン対話（ヒント→リトライ→次の問題）
+- **Skills/Tools**: セッションワークフローを再利用可能なスラッシュコマンドとして登録
+
+Claude Codeでは **Skill** として登録 — `/tutor` と入力すれば
+エージェントがチュータリングループ全体を処理する。
+他のAgent CLIでも同じPython APIで同等の連携が可能。
+
+```
+┌──────────────────────────────────────────┐
+│  Agent CLI (Claude Code, Codex, etc.)    │
+│  ┌────────────────┐  ┌───────────────┐   │
+│  │  LLM推論       │  │  シェルアクセス│   │
+│  └───────┬────────┘  └───────┬───────┘   │
+│          │    Skills / Tools │            │
+│          └────────┬──────────┘            │
+│                   ▼                      │
+│        spikuit-core Python API           │
+│   (Circuit, AutoQuiz, TutorSession)      │
+│                   │                      │
+│              spkt CLI                    │
+└──────────────────────────────────────────┘
+```
 
 ### `/tutor` — スキャフォールド型チュータリング
 
