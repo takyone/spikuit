@@ -5,18 +5,19 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import aiosqlite
 
 from .models import Grade, Neuron, Spike, Synapse, SynapseType
 
-DEFAULT_DB_PATH = Path.home() / ".spikuit" / "spikuit.db"
+DEFAULT_DB_PATH: Path = Path.home() / ".spikuit" / "spikuit.db"
 
 # ---------------------------------------------------------------------------
 # Schema
 # ---------------------------------------------------------------------------
 
-_SCHEMA = """
+_SCHEMA: str = """
 CREATE TABLE IF NOT EXISTS neuron (
     id TEXT PRIMARY KEY,
     content TEXT NOT NULL,
@@ -41,13 +42,7 @@ CREATE TABLE IF NOT EXISTS synapse (
 
 CREATE TABLE IF NOT EXISTS fsrs_state (
     neuron_id TEXT PRIMARY KEY REFERENCES neuron(id),
-    stability REAL,
-    difficulty REAL,
-    retrievability REAL,
-    last_review TEXT,
-    next_review TEXT,
-    review_count INTEGER NOT NULL DEFAULT 0,
-    lapse_count INTEGER NOT NULL DEFAULT 0
+    card_json TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS spike (
@@ -69,7 +64,6 @@ CREATE INDEX IF NOT EXISTS idx_neuron_type ON neuron(type);
 CREATE INDEX IF NOT EXISTS idx_neuron_domain ON neuron(domain);
 CREATE INDEX IF NOT EXISTS idx_synapse_pre ON synapse(pre);
 CREATE INDEX IF NOT EXISTS idx_synapse_post ON synapse(post);
-CREATE INDEX IF NOT EXISTS idx_fsrs_next_review ON fsrs_state(next_review);
 CREATE INDEX IF NOT EXISTS idx_spike_neuron ON spike(neuron_id);
 CREATE INDEX IF NOT EXISTS idx_spike_session ON spike(session_id);
 """
@@ -79,11 +73,12 @@ CREATE INDEX IF NOT EXISTS idx_spike_session ON spike(session_id);
 # Database
 # ---------------------------------------------------------------------------
 
+
 class Database:
     """Async SQLite wrapper for Spikuit persistence."""
 
     def __init__(self, db_path: str | Path = DEFAULT_DB_PATH) -> None:
-        self.db_path = Path(db_path)
+        self.db_path: Path = Path(db_path)
         self._conn: aiosqlite.Connection | None = None
 
     async def connect(self) -> None:
@@ -125,10 +120,10 @@ class Database:
         await self.conn.commit()
 
     async def get_neuron(self, neuron_id: str) -> Neuron | None:
-        row = await self.conn.execute_fetchall(
+        rows = await self.conn.execute_fetchall(
             "SELECT * FROM neuron WHERE id = ?", (neuron_id,)
         )
-        return _row_to_neuron(row[0]) if row else None
+        return _row_to_neuron(rows[0]) if rows else None
 
     async def list_neurons(
         self,
@@ -138,8 +133,8 @@ class Database:
         limit: int = 100,
         offset: int = 0,
     ) -> list[Neuron]:
-        clauses = []
-        params: list = []
+        clauses: list[str] = []
+        params: list[Any] = []
         if type:
             clauses.append("type = ?")
             params.append(type)
@@ -171,7 +166,9 @@ class Database:
         await self.conn.commit()
 
     async def delete_neuron(self, neuron_id: str) -> None:
-        await self.conn.execute("DELETE FROM synapse WHERE pre=? OR post=?", (neuron_id, neuron_id))
+        await self.conn.execute(
+            "DELETE FROM synapse WHERE pre=? OR post=?", (neuron_id, neuron_id)
+        )
         await self.conn.execute("DELETE FROM fsrs_state WHERE neuron_id=?", (neuron_id,))
         await self.conn.execute("DELETE FROM spike WHERE neuron_id=?", (neuron_id,))
         await self.conn.execute("DELETE FROM neuron WHERE id=?", (neuron_id,))
@@ -201,7 +198,9 @@ class Database:
         )
         await self.conn.commit()
 
-    async def get_synapse(self, pre: str, post: str, type: SynapseType) -> Synapse | None:
+    async def get_synapse(
+        self, pre: str, post: str, type: SynapseType
+    ) -> Synapse | None:
         rows = await self.conn.execute_fetchall(
             "SELECT * FROM synapse WHERE pre=? AND post=? AND type=?",
             (pre, post, type.value),
@@ -248,6 +247,41 @@ class Database:
         )
         await self.conn.commit()
 
+    # -- FSRS state ---------------------------------------------------------
+
+    async def upsert_fsrs_card(self, neuron_id: str, card_json: str) -> None:
+        await self.conn.execute(
+            """INSERT INTO fsrs_state (neuron_id, card_json) VALUES (?, ?)
+               ON CONFLICT(neuron_id) DO UPDATE SET card_json=excluded.card_json""",
+            (neuron_id, card_json),
+        )
+        await self.conn.commit()
+
+    async def get_fsrs_card_json(self, neuron_id: str) -> str | None:
+        rows = await self.conn.execute_fetchall(
+            "SELECT card_json FROM fsrs_state WHERE neuron_id=?", (neuron_id,)
+        )
+        return rows[0]["card_json"] if rows else None
+
+    async def get_due_neurons(self, *, now: datetime | None = None, limit: int = 20) -> list[str]:
+        """Return neuron IDs whose FSRS card is due for review."""
+        if now is None:
+            now = datetime.now(timezone.utc)
+        rows = await self.conn.execute_fetchall(
+            "SELECT neuron_id, card_json FROM fsrs_state"
+        )
+        due_ids: list[str] = []
+        for row in rows:
+            card_data = json.loads(row["card_json"])
+            due_str = card_data.get("due")
+            if due_str:
+                due_dt = datetime.fromisoformat(due_str)
+                if due_dt <= now:
+                    due_ids.append(row["neuron_id"])
+            if len(due_ids) >= limit:
+                break
+        return due_ids
+
     # -- Spike --------------------------------------------------------------
 
     async def insert_spike(self, spike: Spike) -> int:
@@ -287,6 +321,7 @@ class Database:
 # Row converters
 # ---------------------------------------------------------------------------
 
+
 def _row_to_neuron(row: aiosqlite.Row) -> Neuron:
     return Neuron(
         id=row["id"],
@@ -324,6 +359,7 @@ def _row_to_spike(row: aiosqlite.Row) -> Spike:
 # ---------------------------------------------------------------------------
 # Timestamp helpers
 # ---------------------------------------------------------------------------
+
 
 def _ts(dt: datetime) -> str:
     return dt.isoformat()

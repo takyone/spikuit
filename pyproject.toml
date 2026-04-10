@@ -30,8 +30,11 @@ Issues = "https://github.com/takyone/spikuit/issues"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build]
+skip-excluded-dirs = true
+
 [tool.hatch.build.targets.wheel]
-only-include = []
+packages = ["spikuit-core/src/spikuit_core"]
 
 [tool.uv.workspace]
 members = [
