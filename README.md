@@ -1,6 +1,6 @@
 # Spikuit
 
-[English](README.md) | [日本語](docs/README.ja.md)
+[English](README.md) | [日本語](docs/index.ja.md)
 
 **A knowledge base that gets smarter the more you use it.**
 
@@ -112,11 +112,10 @@ For the technical details behind these mechanisms, see
 
 ```bash
 # Install
-git clone https://github.com/takyone/spikuit.git
-cd spikuit
-uv sync --package spikuit-cli
+pip install spikuit
 
 # Initialize a brain (interactive wizard)
+# Configures embeddings and installs Agent CLI skills (/tutor, /learn, /qabot)
 spkt init
 
 # Add knowledge
@@ -132,6 +131,18 @@ spkt retrieve "functor"
 # Visualize your knowledge graph
 spkt visualize
 ```
+
+### Agent CLI Skills
+
+`spkt init` can install skills for your Agent CLI (Claude Code, Cursor, Codex).
+You can also install them separately:
+
+```bash
+spkt skills install                    # Default: .claude/skills/
+spkt skills install -t .cursor/skills  # For Cursor
+```
+
+Once installed, use `/tutor`, `/learn`, or `/qabot` from your Agent CLI.
 
 ## Documentation
 
@@ -157,6 +168,8 @@ on top, designed for tools like Claude Code.
 ## Development
 
 ```bash
+git clone https://github.com/takyone/spikuit.git
+cd spikuit
 uv sync --package spikuit-core --extra dev
 uv run --package spikuit-core pytest spikuit-core/tests/ -v
 ```

@@ -55,7 +55,43 @@ Retrieval quality improves through conversation feedback — not re-indexing.
 3. **Search optimization** — results ranked by relevance × memory
    strength × graph centrality. Feedback improves ranking over time.
 
-## Get Started
+## Quick Start
+
+```bash
+# Install
+pip install spikuit
+
+# Initialize a brain (interactive wizard)
+# Configures embeddings and installs Agent CLI skills (/tutor, /learn, /qabot)
+spkt init
+
+# Add knowledge
+spkt add "# Functor\n\nA mapping between categories." -t concept -d math
+
+# Review what's due
+spkt due
+spkt quiz
+
+# Search
+spkt retrieve "functor"
+
+# Visualize your knowledge graph
+spkt visualize
+```
+
+### Agent CLI Skills
+
+`spkt init` can install skills for your Agent CLI (Claude Code, Cursor, Codex).
+You can also install them separately:
+
+```bash
+spkt skills install                    # Default: .claude/skills/
+spkt skills install -t .cursor/skills  # For Cursor
+```
+
+Once installed, use `/tutor`, `/learn`, or `/qabot` from your Agent CLI.
+
+## Documentation
 
 - [Getting Started](getting-started.md) — install, initialize, first commands
 - [How to Use](how-to-use.md) — use cases, agent skills, Python API

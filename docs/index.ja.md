@@ -53,7 +53,43 @@ await session.accept([results[0].neuron_id])
 3. **検索の最適化** — 関連度 × 記憶の強さ × グラフ中心性でランク付け。
    フィードバックで継続的に改善。
 
-## はじめる
+## クイックスタート
+
+```bash
+# インストール
+pip install spikuit
+
+# Brainの初期化（対話式ウィザード）
+# エンベディング設定、Agent CLIスキル（/tutor, /learn, /qabot）のインストールも行えます
+spkt init
+
+# ナレッジを追加
+spkt add "# Functor\n\n圏の間の構造を保つ写像。" -t concept -d math
+
+# 復習対象を確認
+spkt due
+spkt quiz
+
+# 検索
+spkt retrieve "functor"
+
+# ナレッジグラフを可視化
+spkt visualize
+```
+
+### Agent CLIスキル
+
+`spkt init` でAgent CLI（Claude Code、Cursor、Codex）向けのスキルをインストールできます。
+個別にインストールすることも可能です：
+
+```bash
+spkt skills install                    # デフォルト: .claude/skills/
+spkt skills install -t .cursor/skills  # Cursor用
+```
+
+インストール後、Agent CLIから `/tutor`、`/learn`、`/qabot` が使えます。
+
+## ドキュメント
 
 - [はじめに](getting-started.ja.md) — インストール、初期化、最初のコマンド
 - [使い方](how-to-use.ja.md) — ユースケース、エージェントスキル、Python API
