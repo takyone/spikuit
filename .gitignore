@@ -32,6 +32,9 @@ Thumbs.db
 *.db
 *.sqlite3
 
+# Brain data (project-local)
+.spikuit/
+
 # Coverage
 htmlcov/
 .coverage

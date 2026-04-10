@@ -14,6 +14,7 @@ import networkx as nx
 from fsrs import Card, Rating, Scheduler
 
 from .db import DEFAULT_DB_PATH, Database
+from .embedder import Embedder, vec_to_blob
 from .models import Grade, Neuron, Plasticity, Spike, Synapse, SynapseType
 from .propagation import compute_propagation, compute_stdp, decay_all_pressure
 
@@ -47,8 +48,13 @@ class Circuit:
         self,
         db_path: str | Path = DEFAULT_DB_PATH,
         plasticity: Plasticity | None = None,
+        embedder: Embedder | None = None,
     ) -> None:
-        self._db: Database = Database(db_path)
+        self._embedder = embedder
+        self._db: Database = Database(
+            db_path,
+            embedding_dimension=embedder.dimension if embedder else None,
+        )
         self._graph: nx.DiGraph = nx.DiGraph()
         self._scheduler: Scheduler = Scheduler()
         self._cards: dict[str, Card] = {}  # neuron_id → FSRS Card (in-memory cache)
@@ -61,6 +67,7 @@ class Circuit:
         await self._db.connect()
         await self._load_graph()
         await self._load_cards()
+        await self._load_retrieval_boosts()
 
     async def close(self) -> None:
         await self._db.close()
@@ -88,10 +95,17 @@ class Circuit:
             card = Card.from_json(row["card_json"])
             self._cards[row["neuron_id"]] = card
 
+    async def _load_retrieval_boosts(self) -> None:
+        """Load retrieval boosts from DB into graph node attributes."""
+        boosts = await self._db.get_all_retrieval_boosts()
+        for nid, boost in boosts.items():
+            if nid in self._graph:
+                self._graph.nodes[nid]["retrieval_boost"] = boost
+
     # -- Neuron operations --------------------------------------------------
 
     async def add_neuron(self, neuron: Neuron) -> Neuron:
-        """Add a Neuron to the circuit. Initializes FSRS card."""
+        """Add a Neuron to the circuit. Initializes FSRS card and embedding."""
         await self._db.insert_neuron(neuron)
         self._graph.add_node(neuron.id, type=neuron.type, domain=neuron.domain)
 
@@ -99,6 +113,11 @@ class Circuit:
         card = Card()
         self._cards[neuron.id] = card
         await self._db.upsert_fsrs_card(neuron.id, card.to_json())
+
+        # Auto-embed if embedder is available
+        if self._embedder is not None:
+            vec = await self._embedder.embed(neuron.content)
+            await self._db.upsert_embedding(neuron.id, vec_to_blob(vec))
 
         return neuron
 
@@ -113,6 +132,10 @@ class Circuit:
         if neuron.id in self._graph:
             self._graph.nodes[neuron.id]["type"] = neuron.type
             self._graph.nodes[neuron.id]["domain"] = neuron.domain
+        # Re-embed on content change
+        if self._embedder is not None:
+            vec = await self._embedder.embed(neuron.content)
+            await self._db.upsert_embedding(neuron.id, vec_to_blob(vec))
 
     async def remove_neuron(self, neuron_id: str) -> None:
         await self._db.delete_neuron(neuron_id)
@@ -288,6 +311,27 @@ class Circuit:
             now = datetime.now(timezone.utc)
         decay_all_pressure(self._graph, now, self.plasticity)
 
+    # -- Retrieval boost ----------------------------------------------------
+
+    def get_retrieval_boost(self, neuron_id: str) -> float:
+        if neuron_id not in self._graph:
+            return 0.0
+        return self._graph.nodes[neuron_id].get("retrieval_boost", 0.0)
+
+    def set_retrieval_boost(self, neuron_id: str, value: float) -> None:
+        if neuron_id in self._graph:
+            self._graph.nodes[neuron_id]["retrieval_boost"] = value
+
+    async def commit_retrieval_boosts(self) -> None:
+        """Persist all in-memory retrieval boosts to DB."""
+        updates = {}
+        for nid in self._graph.nodes:
+            boost = self._graph.nodes[nid].get("retrieval_boost", 0.0)
+            if boost != 0.0:
+                updates[nid] = boost
+        if updates:
+            await self._db.batch_set_retrieval_boosts(updates)
+
     # -- Retrieve -----------------------------------------------------------
 
     async def retrieve(
@@ -298,18 +342,14 @@ class Circuit:
     ) -> list[Neuron]:
         """Retrieve neurons matching a query with graph-weighted scoring.
 
-        Score = keyword_sim × (1 + retrievability + centrality + pressure)
+        Score = text_sim × (1 + retrievability + centrality + pressure)
 
-        Components:
-        - keyword_sim: fraction of query keywords found in content
-        - retrievability: FSRS retrievability (0-1), rewards recently reviewed
-        - centrality: PageRank centrality, rewards well-connected neurons
-        - pressure: current LIF pressure, surfaces "about to fire" neurons
+        text_sim is max(keyword_sim, semantic_sim) when an embedder is
+        available, or just keyword_sim otherwise.
         """
         if not query.strip():
             return []
 
-        all_neurons = await self._db.list_neurons(limit=1000)
         query_lower = query.lower()
         keywords = query_lower.split()
         if not keywords:
@@ -320,30 +360,70 @@ class Circuit:
         if self._graph.number_of_nodes() > 1:
             centrality_map = nx.degree_centrality(self._graph)
 
+        # Semantic similarity via embeddings (if available)
+        semantic_scores: dict[str, float] = {}
+        if self._embedder is not None and self._db.has_embeddings:
+            query_vec = await self._embedder.embed(query)
+            query_blob = vec_to_blob(query_vec)
+            # Fetch more candidates than limit to allow re-ranking
+            knn_results = await self._db.knn_search(query_blob, limit=limit * 3)
+            if knn_results:
+                # Convert L2 distance to similarity score (0-1)
+                max_dist = max(d for _, d in knn_results) or 1.0
+                for nid, dist in knn_results:
+                    semantic_scores[nid] = max(0.0, 1.0 - dist / (max_dist + 1e-6))
+
+        # Collect candidate neuron IDs (keyword matches + semantic matches)
+        all_neurons = await self._db.list_neurons(limit=1000)
+        neuron_map = {n.id: n for n in all_neurons}
+
         scored: list[tuple[float, Neuron]] = []
+        seen: set[str] = set()
+
         for n in all_neurons:
             content_lower = n.content.lower()
             hits = sum(1 for kw in keywords if kw in content_lower)
-            if hits == 0:
-                continue
+            keyword_sim = hits / len(keywords) if hits > 0 else 0.0
+            sem_sim = semantic_scores.get(n.id, 0.0)
+            text_sim = max(keyword_sim, sem_sim)
 
-            keyword_sim = hits / len(keywords)
+            if text_sim == 0.0:
+                continue
 
             # FSRS retrievability (0-1)
             card = self._cards.get(n.id)
-            if card is not None:
-                now = datetime.now(timezone.utc)
-                retrievability = self._scheduler.get_card_retrievability(card, now)
-            else:
-                retrievability = 0.0
+            now = datetime.now(timezone.utc)
+            retrievability = (
+                self._scheduler.get_card_retrievability(card, now)
+                if card is not None
+                else 0.0
+            )
 
-            # Graph centrality (degree centrality, already 0-1)
             centrality_norm = centrality_map.get(n.id, 0.0)
-
-            # Pressure boost
             pressure = self.get_pressure(n.id)
 
-            score = keyword_sim * (1.0 + retrievability + centrality_norm + pressure)
+            boost = self.get_retrieval_boost(n.id)
+            score = text_sim * (1.0 + retrievability + centrality_norm + pressure + boost)
+            scored.append((score, n))
+            seen.add(n.id)
+
+        # Include semantic-only hits not caught by keyword scan
+        for nid, sem_sim in semantic_scores.items():
+            if nid in seen or sem_sim == 0.0:
+                continue
+            n = neuron_map.get(nid)
+            if n is None:
+                continue
+            card = self._cards.get(n.id)
+            now = datetime.now(timezone.utc)
+            retrievability = (
+                self._scheduler.get_card_retrievability(card, now)
+                if card is not None
+                else 0.0
+            )
+            centrality_norm = centrality_map.get(n.id, 0.0)
+            pressure = self.get_pressure(n.id)
+            score = sem_sim * (1.0 + retrievability + centrality_norm + pressure)
             scored.append((score, n))
 
         scored.sort(key=lambda x: x[0], reverse=True)
@@ -389,6 +469,32 @@ class Circuit:
     def graph(self) -> nx.DiGraph:
         """Direct access to the NetworkX graph (read-only use)."""
         return self._graph
+
+    # -- Embedding backfill -------------------------------------------------
+
+    async def embed_all(self, *, batch_size: int = 32) -> int:
+        """Embed all neurons that don't have embeddings yet. Returns count."""
+        if self._embedder is None:
+            return 0
+        all_neurons = await self._db.list_neurons(limit=100_000)
+        to_embed: list[Neuron] = []
+        for n in all_neurons:
+            rows = await self._db.conn.execute_fetchall(
+                "SELECT 1 FROM neuron_vec_map WHERE neuron_id = ?", (n.id,)
+            )
+            if not rows:
+                to_embed.append(n)
+        if not to_embed:
+            return 0
+        count = 0
+        for i in range(0, len(to_embed), batch_size):
+            batch = to_embed[i : i + batch_size]
+            texts = [n.content for n in batch]
+            vecs = await self._embedder.embed_batch(texts)
+            for n, vec in zip(batch, vecs):
+                await self._db.upsert_embedding(n.id, vec_to_blob(vec))
+                count += 1
+        return count
 
     # -- Stats --------------------------------------------------------------
 

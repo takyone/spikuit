@@ -43,12 +43,28 @@ uv run --package spikuit-core pytest spikuit-core/tests/test_propagation.py -v
 - **Language**: Code, comments, docs, skills — all in English.
 - **Responses**: Match the user's language when speaking to them.
 
+## Brain Setup
+
+```bash
+spkt init                              # Create .spikuit/ in CWD
+spkt init -p openai-compat \           # With LM Studio embeddings
+  --base-url http://localhost:1234/v1 \
+  --model text-embedding-nomic-embed-text-v1.5
+spkt config                            # Show current brain config
+spkt embed-all                         # Backfill embeddings for existing neurons
+```
+
+Config lives in `.spikuit/config.toml`. CLI auto-discovers `.spikuit/` by walking up from CWD.
+
 ## spkt CLI
 
 All commands support `--json` for machine-readable output.
 
 | Command | Purpose |
 |---------|---------|
+| `spkt init` | Initialize .spikuit/ brain |
+| `spkt config` | Show brain configuration |
+| `spkt embed-all` | Backfill embeddings |
 | `spkt add` | Add a Neuron |
 | `spkt fire` | Fire a Spike (FSRS + APPNP + STDP) |
 | `spkt due` | List neurons due for review |
@@ -57,6 +73,7 @@ All commands support `--json` for machine-readable output.
 | `spkt link` | Create a Synapse |
 | `spkt inspect` | Neuron detail |
 | `spkt stats` | Circuit statistics |
+| `spkt quiz` | Interactive flashcard review session |
 | `spkt visualize` | Interactive graph visualization (HTML) |
 
 ## Grade Scale
@@ -76,6 +93,20 @@ All commands support `--json` for machine-readable output.
 | `extends` | Directed | A extends B |
 | `contrasts` | Bidirectional | A contrasts with B |
 | `relates_to` | Bidirectional | General association |
+
+## Architecture
+
+- **Circuit**: The knowledge graph engine (FSRS + NetworkX + propagation + sqlite-vec)
+- **Embedder**: Pluggable text embedding (OpenAICompat, Ollama, Null). Auto-embeds on add/update.
+- **Session**: Interaction modes for the Brain
+  - **QABotSession**: RAG chat with retrieval feedback (negative penalty, accept, dedup, persistent/ephemeral)
+  - **ReviewSession**: Spaced repetition (wraps Learn protocol) — planned
+  - **LearnSession**: Knowledge ingestion — planned
+- **Scaffold**: ZPD-inspired support levels (FULL/GUIDED/MINIMAL/NONE) from FSRS state + graph neighbors
+- **Learn**: Abstract protocol (select → scaffold → present → evaluate → record)
+  - **Flashcard** (core): Self-grade flashcard, no LLM required
+  - **Quiz** (skills): LLM-generated questions, per-neuron grading
+- **1 Quiz : N Neurons**: QuizRequest has primary + supporting neurons, QuizResult has per-neuron grades
 
 ## Key Algorithms
 

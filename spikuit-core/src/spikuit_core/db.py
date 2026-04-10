@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import aiosqlite
+import sqlite_vec
 
 from .models import Grade, Neuron, Spike, Synapse, SynapseType
 
@@ -66,6 +67,12 @@ CREATE INDEX IF NOT EXISTS idx_synapse_pre ON synapse(pre);
 CREATE INDEX IF NOT EXISTS idx_synapse_post ON synapse(post);
 CREATE INDEX IF NOT EXISTS idx_spike_neuron ON spike(neuron_id);
 CREATE INDEX IF NOT EXISTS idx_spike_session ON spike(session_id);
+
+CREATE TABLE IF NOT EXISTS retrieval_boost (
+    neuron_id TEXT PRIMARY KEY REFERENCES neuron(id),
+    boost REAL NOT NULL DEFAULT 0.0,
+    updated_at TEXT NOT NULL
+);
 """
 
 
@@ -77,9 +84,15 @@ CREATE INDEX IF NOT EXISTS idx_spike_session ON spike(session_id);
 class Database:
     """Async SQLite wrapper for Spikuit persistence."""
 
-    def __init__(self, db_path: str | Path = DEFAULT_DB_PATH) -> None:
+    def __init__(
+        self,
+        db_path: str | Path = DEFAULT_DB_PATH,
+        *,
+        embedding_dimension: int | None = None,
+    ) -> None:
         self.db_path: Path = Path(db_path)
         self._conn: aiosqlite.Connection | None = None
+        self._embedding_dimension = embedding_dimension
 
     async def connect(self) -> None:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -89,6 +102,34 @@ class Database:
         await self._conn.execute("PRAGMA foreign_keys=ON")
         await self._conn.executescript(_SCHEMA)
         await self._conn.commit()
+        # Load sqlite-vec extension and create vec table if dimension is set
+        if self._embedding_dimension is not None:
+            await self._init_vec_table(self._embedding_dimension)
+
+    async def _init_vec_table(self, dimension: int) -> None:
+        """Initialize sqlite-vec virtual table for embeddings."""
+
+        def _load_extension():
+            """Load sqlite-vec in the worker thread (same thread as the connection)."""
+            raw = self.conn._conn  # sqlite3.Connection in worker thread
+            raw.enable_load_extension(True)
+            sqlite_vec.load(raw)
+            raw.enable_load_extension(False)
+
+        # Run in aiosqlite's worker thread where the connection lives
+        await self.conn._execute(_load_extension)
+        await self.conn.execute(
+            f"CREATE VIRTUAL TABLE IF NOT EXISTS neuron_vec "
+            f"USING vec0(embedding float[{dimension}])"
+        )
+        # Mapping table: rowid ↔ neuron_id (vec0 uses integer rowids)
+        await self.conn.executescript("""
+            CREATE TABLE IF NOT EXISTS neuron_vec_map (
+                rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+                neuron_id TEXT NOT NULL UNIQUE REFERENCES neuron(id)
+            );
+        """)
+        await self.conn.commit()
 
     async def close(self) -> None:
         if self._conn:
@@ -171,6 +212,8 @@ class Database:
         )
         await self.conn.execute("DELETE FROM fsrs_state WHERE neuron_id=?", (neuron_id,))
         await self.conn.execute("DELETE FROM spike WHERE neuron_id=?", (neuron_id,))
+        if self._embedding_dimension is not None:
+            await self.delete_embedding(neuron_id)
         await self.conn.execute("DELETE FROM neuron WHERE id=?", (neuron_id,))
         await self.conn.commit()
 
@@ -306,6 +349,99 @@ class Database:
             (neuron_id, limit),
         )
         return [_row_to_spike(r) for r in rows]
+
+    # -- Embeddings ---------------------------------------------------------
+
+    async def upsert_embedding(self, neuron_id: str, blob: bytes) -> None:
+        """Insert or replace an embedding vector for a neuron."""
+        # Get or create the rowid mapping
+        rows = await self.conn.execute_fetchall(
+            "SELECT rowid FROM neuron_vec_map WHERE neuron_id = ?", (neuron_id,)
+        )
+        if rows:
+            rid = rows[0]["rowid"]
+            # Update: delete old vec row and re-insert
+            await self.conn.execute(
+                "DELETE FROM neuron_vec WHERE rowid = ?", (rid,)
+            )
+            await self.conn.execute(
+                "INSERT INTO neuron_vec(rowid, embedding) VALUES (?, ?)",
+                (rid, blob),
+            )
+        else:
+            # Insert mapping first
+            cursor = await self.conn.execute(
+                "INSERT INTO neuron_vec_map (neuron_id) VALUES (?)", (neuron_id,)
+            )
+            rid = cursor.lastrowid
+            await self.conn.execute(
+                "INSERT INTO neuron_vec(rowid, embedding) VALUES (?, ?)",
+                (rid, blob),
+            )
+        await self.conn.commit()
+
+    async def delete_embedding(self, neuron_id: str) -> None:
+        """Remove an embedding for a neuron."""
+        rows = await self.conn.execute_fetchall(
+            "SELECT rowid FROM neuron_vec_map WHERE neuron_id = ?", (neuron_id,)
+        )
+        if rows:
+            rid = rows[0]["rowid"]
+            await self.conn.execute("DELETE FROM neuron_vec WHERE rowid = ?", (rid,))
+            await self.conn.execute("DELETE FROM neuron_vec_map WHERE rowid = ?", (rid,))
+            await self.conn.commit()
+
+    async def knn_search(self, query_blob: bytes, *, limit: int = 20) -> list[tuple[str, float]]:
+        """Find nearest neighbors. Returns (neuron_id, distance) pairs."""
+        rows = await self.conn.execute_fetchall(
+            """
+            SELECT m.neuron_id, v.distance
+            FROM neuron_vec v
+            JOIN neuron_vec_map m ON m.rowid = v.rowid
+            WHERE v.embedding MATCH ? AND k = ?
+            ORDER BY v.distance
+            """,
+            (query_blob, limit),
+        )
+        return [(row["neuron_id"], row["distance"]) for row in rows]
+
+    @property
+    def has_embeddings(self) -> bool:
+        """Whether embedding support is enabled."""
+        return self._embedding_dimension is not None
+
+    # -- Retrieval boost ----------------------------------------------------
+
+    async def get_retrieval_boost(self, neuron_id: str) -> float:
+        rows = await self.conn.execute_fetchall(
+            "SELECT boost FROM retrieval_boost WHERE neuron_id = ?", (neuron_id,)
+        )
+        return rows[0]["boost"] if rows else 0.0
+
+    async def set_retrieval_boost(self, neuron_id: str, boost: float) -> None:
+        await self.conn.execute(
+            """INSERT INTO retrieval_boost (neuron_id, boost, updated_at)
+               VALUES (?, ?, ?)
+               ON CONFLICT(neuron_id) DO UPDATE SET boost=excluded.boost, updated_at=excluded.updated_at""",
+            (neuron_id, boost, _ts(datetime.now(timezone.utc))),
+        )
+        await self.conn.commit()
+
+    async def batch_set_retrieval_boosts(self, updates: dict[str, float]) -> None:
+        """Set multiple retrieval boosts in a single transaction."""
+        now = _ts(datetime.now(timezone.utc))
+        for nid, boost in updates.items():
+            await self.conn.execute(
+                """INSERT INTO retrieval_boost (neuron_id, boost, updated_at)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT(neuron_id) DO UPDATE SET boost=excluded.boost, updated_at=excluded.updated_at""",
+                (nid, boost, now),
+            )
+        await self.conn.commit()
+
+    async def get_all_retrieval_boosts(self) -> dict[str, float]:
+        rows = await self.conn.execute_fetchall("SELECT neuron_id, boost FROM retrieval_boost")
+        return {row["neuron_id"]: row["boost"] for row in rows}
 
     # -- Retrieve log -------------------------------------------------------
 

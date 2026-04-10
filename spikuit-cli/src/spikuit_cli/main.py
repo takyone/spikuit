@@ -10,7 +10,9 @@ from typing import Optional
 
 import typer
 
-from spikuit_core import Circuit, Grade, Neuron, Plasticity, Spike, SynapseType
+from spikuit_core import Circuit, Flashcard, Grade, Neuron, Plasticity, Spike, SynapseType
+from spikuit_core.config import BrainConfig, find_spikuit_root, init_brain, load_config
+from spikuit_core.embedder import create_embedder
 
 app = typer.Typer(
     name="spkt",
@@ -18,12 +20,31 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
-# Default DB path
-DEFAULT_DB = Path.home() / ".spikuit" / "circuit.db"
+
+def _load_brain_config(db: Path | None = None) -> BrainConfig:
+    """Load config from .spikuit/ or use explicit db path."""
+    if db is not None:
+        # Explicit --db overrides config discovery
+        config = BrainConfig()
+        config.root = db.parent
+        return config
+    return load_config()
 
 
-def _get_circuit(db: Path) -> Circuit:
-    return Circuit(db_path=db)
+def _get_circuit(db: Path | None = None) -> Circuit:
+    """Create a Circuit from config or explicit db path."""
+    if db is not None:
+        return Circuit(db_path=db)
+    config = load_config()
+    embedder = create_embedder(
+        config.embedder.provider,
+        base_url=config.embedder.base_url,
+        model=config.embedder.model,
+        dimension=config.embedder.dimension,
+        api_key=config.embedder.api_key,
+        timeout=config.embedder.timeout,
+    )
+    return Circuit(db_path=config.db_path, embedder=embedder)
 
 
 def _run(coro):
@@ -68,6 +89,121 @@ def _neuron_dict(n: Neuron, circuit: Circuit) -> dict:
 
 
 # -------------------------------------------------------------------
+# init
+# -------------------------------------------------------------------
+
+
+@app.command()
+def init(
+    name: Optional[str] = typer.Option(None, "--name", "-n", help="Brain name (defaults to directory name)"),
+    provider: str = typer.Option("none", "--provider", "-p", help="Embedder: none|openai-compat|ollama"),
+    base_url: str = typer.Option("", "--base-url", help="Embedder API base URL"),
+    model: str = typer.Option("", "--model", "-m", help="Embedding model name"),
+    dimension: int = typer.Option(768, "--dimension", "-d", help="Embedding dimension"),
+    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
+) -> None:
+    """Initialize a new .spikuit/ brain in the current directory."""
+    try:
+        config = init_brain(
+            name=name,
+            embedder_provider=provider,
+            embedder_base_url=base_url,
+            embedder_model=model,
+            embedder_dimension=dimension,
+        )
+    except FileExistsError:
+        typer.echo(".spikuit/ already exists in this directory.", err=True)
+        raise typer.Exit(1)
+
+    if as_json:
+        _out({
+            "root": str(config.root),
+            "db": str(config.db_path),
+            "config": str(config.config_path),
+            "embedder": config.embedder.provider,
+            "name": config.name,
+        }, use_json=True)
+    else:
+        typer.echo(f"Initialized brain '{config.name}' at {config.spikuit_dir}/")
+        typer.echo(f"  config: {config.config_path}")
+        typer.echo(f"  db:     {config.db_path}")
+        if config.embedder.provider != "none":
+            typer.echo(f"  embedder: {config.embedder.provider} ({config.embedder.model})")
+        else:
+            typer.echo(f"  embedder: none (edit config.toml to enable)")
+
+
+# -------------------------------------------------------------------
+# config
+# -------------------------------------------------------------------
+
+
+@app.command()
+def config(
+    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
+) -> None:
+    """Show current brain configuration."""
+    cfg = load_config()
+    root = find_spikuit_root()
+
+    if as_json:
+        _out({
+            "root": str(cfg.root),
+            "name": cfg.name,
+            "db": str(cfg.db_path),
+            "found": root is not None,
+            "embedder": {
+                "provider": cfg.embedder.provider,
+                "base_url": cfg.embedder.base_url,
+                "model": cfg.embedder.model,
+                "dimension": cfg.embedder.dimension,
+            },
+        }, use_json=True)
+    else:
+        if root is None:
+            typer.echo("No .spikuit/ found (using ~/.spikuit/ fallback)")
+        else:
+            typer.echo(f"Brain: {cfg.name}")
+            typer.echo(f"Root:  {cfg.root}")
+        typer.echo(f"DB:    {cfg.db_path}")
+        typer.echo(f"Embedder: {cfg.embedder.provider}")
+        if cfg.embedder.provider != "none":
+            typer.echo(f"  url:   {cfg.embedder.base_url}")
+            typer.echo(f"  model: {cfg.embedder.model}")
+            typer.echo(f"  dim:   {cfg.embedder.dimension}")
+
+
+# -------------------------------------------------------------------
+# embed-all
+# -------------------------------------------------------------------
+
+
+@app.command(name="embed-all")
+def embed_all(
+    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
+    db: Optional[Path] = typer.Option(None, "--db", help="Database path (overrides .spikuit/ discovery)"),
+) -> None:
+    """Embed all neurons that don't have embeddings yet (backfill)."""
+
+    async def _embed_all():
+        circuit = _get_circuit(db)
+        await circuit.connect()
+        try:
+            if circuit._embedder is None:
+                typer.echo("No embedder configured. Edit .spikuit/config.toml to enable.", err=True)
+                raise typer.Exit(1)
+            count = await circuit.embed_all()
+            if as_json:
+                _out({"embedded": count}, use_json=True)
+            else:
+                typer.echo(f"Embedded {count} neuron(s).")
+        finally:
+            await circuit.close()
+
+    _run(_embed_all())
+
+
+# -------------------------------------------------------------------
 # add
 # -------------------------------------------------------------------
 
@@ -78,7 +214,7 @@ def add(
     type: Optional[str] = typer.Option(None, "--type", "-t", help="Neuron type"),
     domain: Optional[str] = typer.Option(None, "--domain", "-d", help="Domain tag"),
     as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
-    db: Path = typer.Option(DEFAULT_DB, "--db", help="Database path"),
+    db: Optional[Path] = typer.Option(None, "--db", help="Database path (overrides .spikuit/ discovery)"),
 ) -> None:
     """Add a new Neuron to the circuit."""
 
@@ -116,7 +252,7 @@ def fire(
     neuron_id: str = typer.Argument(..., help="Neuron ID to fire"),
     grade: str = typer.Option("fire", "--grade", "-g", help="Grade: miss|weak|fire|strong"),
     as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
-    db: Path = typer.Option(DEFAULT_DB, "--db", help="Database path"),
+    db: Optional[Path] = typer.Option(None, "--db", help="Database path (overrides .spikuit/ discovery)"),
 ) -> None:
     """Fire a spike (record a review) on a Neuron."""
     g = _GRADE_MAP.get(grade.lower())
@@ -162,7 +298,7 @@ def fire(
 def due(
     limit: int = typer.Option(20, "--limit", "-n", help="Max neurons to show"),
     as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
-    db: Path = typer.Option(DEFAULT_DB, "--db", help="Database path"),
+    db: Optional[Path] = typer.Option(None, "--db", help="Database path (overrides .spikuit/ discovery)"),
 ) -> None:
     """Show neurons due for review."""
 
@@ -205,7 +341,7 @@ def retrieve(
     query: str = typer.Argument(..., help="Search query"),
     limit: int = typer.Option(10, "--limit", "-n", help="Max results"),
     as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
-    db: Path = typer.Option(DEFAULT_DB, "--db", help="Database path"),
+    db: Optional[Path] = typer.Option(None, "--db", help="Database path (overrides .spikuit/ discovery)"),
 ) -> None:
     """Retrieve neurons matching a query (graph-weighted scoring)."""
 
@@ -243,7 +379,7 @@ def list_neurons(
     domain: Optional[str] = typer.Option(None, "--domain", "-d", help="Filter by domain"),
     limit: int = typer.Option(50, "--limit", "-n", help="Max neurons to show"),
     as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
-    db: Path = typer.Option(DEFAULT_DB, "--db", help="Database path"),
+    db: Optional[Path] = typer.Option(None, "--db", help="Database path (overrides .spikuit/ discovery)"),
 ) -> None:
     """List neurons in the circuit."""
 
@@ -290,7 +426,7 @@ def link(
     type: str = typer.Option("relates_to", "--type", "-t", help="Synapse type: requires|extends|contrasts|relates_to"),
     weight: float = typer.Option(0.5, "--weight", "-w", help="Initial weight"),
     as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
-    db: Path = typer.Option(DEFAULT_DB, "--db", help="Database path"),
+    db: Optional[Path] = typer.Option(None, "--db", help="Database path (overrides .spikuit/ discovery)"),
 ) -> None:
     """Create a synapse between two neurons."""
     try:
@@ -323,7 +459,7 @@ def link(
 @app.command()
 def stats(
     as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
-    db: Path = typer.Option(DEFAULT_DB, "--db", help="Database path"),
+    db: Optional[Path] = typer.Option(None, "--db", help="Database path (overrides .spikuit/ discovery)"),
 ) -> None:
     """Show circuit statistics."""
 
@@ -354,7 +490,7 @@ def stats(
 def inspect(
     neuron_id: str = typer.Argument(..., help="Neuron ID to inspect"),
     as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
-    db: Path = typer.Option(DEFAULT_DB, "--db", help="Database path"),
+    db: Optional[Path] = typer.Option(None, "--db", help="Database path (overrides .spikuit/ discovery)"),
 ) -> None:
     """Inspect a neuron: content, FSRS state, pressure, neighbors."""
 
@@ -402,6 +538,107 @@ def inspect(
 
 
 # -------------------------------------------------------------------
+# quiz (interactive flashcard session)
+# -------------------------------------------------------------------
+
+
+@app.command()
+def quiz(
+    limit: int = typer.Option(10, "--limit", "-n", help="Max neurons per session"),
+    as_json: bool = typer.Option(False, "--json", help="Output as JSON (non-interactive, dump quiz items)"),
+    db: Optional[Path] = typer.Option(None, "--db", help="Database path (overrides .spikuit/ discovery)"),
+) -> None:
+    """Run an interactive flashcard review session."""
+
+    async def _quiz():
+        circuit = _get_circuit(db)
+        await circuit.connect()
+        try:
+            fc = Flashcard(circuit)
+            due_ids = await fc.select(limit=limit)
+
+            if not due_ids:
+                if as_json:
+                    _out({"status": "no_due", "reviewed": 0}, use_json=True)
+                else:
+                    typer.echo("No neurons due for review.")
+                return
+
+            # JSON mode: dump all quiz items non-interactively (for agent use)
+            if as_json:
+                items = []
+                for nid in due_ids:
+                    scaffold = fc.scaffold(nid)
+                    item = await fc.present(nid, scaffold)
+                    neuron = await circuit.get_neuron(nid)
+                    items.append({
+                        "neuron_id": nid,
+                        "title": _extract_title(neuron.content) if neuron else nid,
+                        "scaffold_level": scaffold.level.value,
+                        "question": item.question,
+                        "answer": item.answer,
+                        "hints": item.hints,
+                        "context": scaffold.context,
+                        "gaps": scaffold.gaps,
+                    })
+                _out({"status": "due", "count": len(items), "items": items}, use_json=True)
+                return
+
+            # Interactive mode
+            reviewed = 0
+            grades: dict[str, int] = {"miss": 0, "weak": 0, "fire": 0, "strong": 0}
+
+            typer.echo(f"\n{len(due_ids)} neuron(s) due for review.\n")
+
+            for i, nid in enumerate(due_ids, 1):
+                scaffold = fc.scaffold(nid)
+                item = await fc.present(nid, scaffold)
+                neuron = await circuit.get_neuron(nid)
+                title = _extract_title(neuron.content) if neuron else nid
+
+                typer.echo(f"--- [{i}/{len(due_ids)}] {title} (scaffold: {scaffold.level.value}) ---")
+                typer.echo(f"\n{item.question}\n")
+
+                if item.hints:
+                    for hint in item.hints:
+                        typer.echo(f"  hint: {hint}")
+
+                # Wait for self-grade
+                grade_input = typer.prompt(
+                    "Grade (miss/weak/fire/strong or 1-4, 'a' for answer, 'q' to quit)"
+                )
+
+                if grade_input.lower() == "q":
+                    typer.echo("Session stopped.")
+                    break
+
+                if grade_input.lower() == "a":
+                    typer.echo(f"\n{item.answer}\n")
+                    grade_input = typer.prompt("Now grade (miss/weak/fire/strong or 1-4)")
+
+                grade = fc.evaluate(nid, item, grade_input)
+                await fc.record(nid, grade)
+                grades[grade.name.lower()] += 1
+                reviewed += 1
+
+                card = circuit.get_card(nid)
+                stab = f"{card.stability:.1f}" if card and card.stability else "-"
+                due_str = str(card.due) if card else "-"
+                typer.echo(f"  -> {grade.name}  stability={stab}  next_due={due_str}\n")
+
+            # Summary
+            typer.echo(f"\nSession complete: {reviewed} reviewed")
+            for g, count in grades.items():
+                if count > 0:
+                    typer.echo(f"  {g}: {count}")
+
+        finally:
+            await circuit.close()
+
+    _run(_quiz())
+
+
+# -------------------------------------------------------------------
 # visualize
 # -------------------------------------------------------------------
 
@@ -410,7 +647,7 @@ def inspect(
 def visualize(
     output: Path = typer.Option("circuit.html", "--output", "-o", help="Output HTML path"),
     open_browser: bool = typer.Option(True, "--open/--no-open", help="Open in browser"),
-    db: Path = typer.Option(DEFAULT_DB, "--db", help="Database path"),
+    db: Optional[Path] = typer.Option(None, "--db", help="Database path (overrides .spikuit/ discovery)"),
 ) -> None:
     """Generate an interactive graph visualization (HTML)."""
     from pyvis.network import Network as PyvisNetwork

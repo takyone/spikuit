@@ -167,6 +167,63 @@ class Plasticity(msgspec.Struct, kw_only=True, frozen=True):
 
 
 # ---------------------------------------------------------------------------
+# Scaffold
+# ---------------------------------------------------------------------------
+
+
+class ScaffoldLevel(str, Enum):
+    """How much support the learner needs."""
+
+    FULL = "full"          # New / struggling — max hints, context, easy questions
+    GUIDED = "guided"      # Progressing — hints on request, some context
+    MINIMAL = "minimal"    # Competent — harder questions, less hand-holding
+    NONE = "none"          # Mastered — application / synthesis level
+
+
+class Scaffold(msgspec.Struct, kw_only=True):
+    """Scaffolding state computed from Brain data.
+
+    Determines how much support a Learn session provides,
+    based on FSRS state, graph context, and pressure.
+    """
+
+    level: ScaffoldLevel = ScaffoldLevel.FULL
+    hints: list[str] = msgspec.field(default_factory=list)
+    context: list[str] = msgspec.field(default_factory=list)   # strong neighbor IDs
+    gaps: list[str] = msgspec.field(default_factory=list)      # weak prerequisite IDs
+
+
+# ---------------------------------------------------------------------------
+# Quiz models
+# ---------------------------------------------------------------------------
+
+
+class QuizRequest(msgspec.Struct, kw_only=True):
+    """Input for quiz generation — what to ask and how."""
+
+    primary: str                          # primary neuron ID
+    supporting: list[str] = msgspec.field(default_factory=list)  # supporting neuron IDs
+    scaffold: Scaffold = msgspec.field(default_factory=Scaffold)
+    quiz_type: str | None = None          # "recall" | "recognition" | "application" | "synthesis" | None (auto)
+
+
+class QuizItem(msgspec.Struct, kw_only=True):
+    """A generated quiz question (filled by LLM or template)."""
+
+    question: str
+    answer: str
+    hints: list[str] = msgspec.field(default_factory=list)
+    grading_criteria: str = ""
+
+
+class QuizResult(msgspec.Struct, kw_only=True):
+    """Result of a quiz — per-neuron grades + overall."""
+
+    grades: dict[str, Grade]              # neuron_id → Grade
+    overall: Grade
+
+
+# ---------------------------------------------------------------------------
 # Frontmatter parser
 # ---------------------------------------------------------------------------
 
