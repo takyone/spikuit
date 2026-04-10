@@ -26,7 +26,14 @@ if TYPE_CHECKING:
 
 @dataclass
 class RetrievalResult:
-    """A single retrieval result with metadata."""
+    """A single retrieval result with metadata.
+
+    Attributes:
+        neuron_id: The matched neuron's ID.
+        score: Relevance score (higher = better).
+        content: Neuron content (Markdown).
+        context_ids: IDs of ensemble neighbors (N-hop context).
+    """
 
     neuron_id: str
     score: float
@@ -35,7 +42,16 @@ class RetrievalResult:
 
 
 class Session(ABC):
-    """Abstract base for Brain interaction sessions."""
+    """Abstract base for Brain interaction sessions.
+
+    All sessions wrap a [`Circuit`][spikuit_core.Circuit] and can be
+    either **persistent** (changes committed on close) or **ephemeral**
+    (changes discarded on close).
+
+    Args:
+        circuit: The Circuit to interact with.
+        persist: Whether to commit changes on close.
+    """
 
     def __init__(
         self,
@@ -60,19 +76,27 @@ class Session(ABC):
 class QABotSession(Session):
     """RAG chat session with self-optimizing retrieval.
 
-    Features:
-    - Negative feedback: follow-up similar queries penalize prior results
-    - Deduplication: already-returned neurons are excluded
-    - Accept: explicit positive feedback boosts neurons
-    - Persistent/ephemeral: choose whether to commit boosts on close
+    Provides intelligent retrieval that improves during the conversation:
 
-    Usage::
+    - **Negative feedback**: follow-up similar queries penalize prior results
+    - **Deduplication**: already-returned neurons are excluded
+    - **Accept**: explicit positive feedback boosts neurons
+    - **Persistent/ephemeral**: choose whether to commit boosts on close
 
+    Example:
+        ```python
         session = QABotSession(circuit, persist=True)
         results = await session.ask("What is a functor?")
         await session.accept(["n-abc123"])  # this one was helpful
         results = await session.ask("functor examples?")  # auto-penalizes prior
         await session.close()  # commits boosts if persistent
+        ```
+
+    Args:
+        circuit: The Circuit (must have an embedder configured).
+        persist: Commit retrieval boosts on close.
+        learning_rate: Feedback strength (default ``0.1``).
+        exclude_seen: Skip already-returned neurons (default ``True``).
     """
 
     def __init__(
@@ -216,18 +240,28 @@ class LearnSession(Session):
 
     Lets a user (or agent) build and refine the knowledge graph through
     dialogue: add neurons, discover related concepts, create synapses,
-    and merge duplicates. This is how "conversational RAG curation" works —
-    the conversation directly improves retrieval quality by curating the
-    graph structure.
+    and merge duplicates. This is how **conversational RAG curation**
+    works — the conversation directly improves retrieval quality by
+    curating the graph structure.
 
-    Usage::
-
+    Example:
+        ```python
         session = LearnSession(circuit)
-        n = await session.ingest("# Functor\\n\\nA mapping between categories.", type="concept")
-        related = await session.search("category theory")
-        await session.relate(n.id, related[0].id, SynapseType.REQUIRES)
+        n, related = await session.ingest(
+            "# Functor\\n\\nA mapping between categories.",
+            type="concept",
+        )
+        if related:
+            await session.relate(n.id, related[0].id, SynapseType.REQUIRES)
         print(session.stats)
         await session.close()
+        ```
+
+    Args:
+        circuit: The Circuit to curate.
+        persist: Commit retrieval boosts on close.
+        auto_relate: Automatically search for related neurons on ingest.
+        auto_relate_limit: Max related neurons returned by ingest.
     """
 
     def __init__(
@@ -256,9 +290,19 @@ class LearnSession(Session):
     ) -> tuple[Neuron, list[Neuron]]:
         """Add a neuron and discover related existing knowledge.
 
-        Returns the new neuron and a list of related neurons found
-        via semantic/keyword search. The caller can then use relate()
-        to connect them.
+        Creates the neuron, auto-embeds it (if an embedder is configured),
+        and searches for related neurons via graph-weighted retrieval.
+
+        Args:
+            content: Markdown content for the new neuron.
+            type: Category tag (e.g. ``"concept"``).
+            domain: Knowledge domain (e.g. ``"math"``).
+            source: Origin URL or reference.
+            id: Custom neuron ID (auto-generated if ``None``).
+
+        Returns:
+            Tuple of ``(new_neuron, related_neurons)``. Use
+            [`relate()`][spikuit_core.LearnSession.relate] to connect them.
         """
         kwargs: dict[str, object] = {}
         if type is not None:
@@ -295,8 +339,18 @@ class LearnSession(Session):
     ) -> list[Synapse]:
         """Create or strengthen a synapse between two neurons.
 
-        If the synapse already exists, its weight is increased
-        (capped at the plasticity ceiling).
+        If the synapse already exists, its weight is increased by ``0.1``
+        (capped at ``plasticity.weight_ceiling``). Bidirectional types
+        create edges in both directions.
+
+        Args:
+            a: Source neuron ID.
+            b: Target neuron ID.
+            type: Connection semantics (default ``relates_to``).
+            weight: Initial weight for new synapses.
+
+        Returns:
+            List of created or updated synapses.
         """
         existing = await self.circuit.get_synapse(a, b, type)
         if existing is not None:
@@ -328,7 +382,15 @@ class LearnSession(Session):
         *,
         limit: int = 10,
     ) -> list[Neuron]:
-        """Search existing knowledge using graph-weighted retrieval."""
+        """Search existing knowledge using graph-weighted retrieval.
+
+        Args:
+            query: Search text.
+            limit: Maximum results.
+
+        Returns:
+            Matching neurons sorted by relevance.
+        """
         return await self.circuit.retrieve(query, limit=limit)
 
     async def merge(
@@ -339,8 +401,18 @@ class LearnSession(Session):
         """Merge source neurons into a target neuron.
 
         Transfers all synapses from source neurons to the target,
-        then removes the source neurons. Content is appended to
-        the target with a merge separator.
+        appends their content with ``---`` separators, then removes
+        the source neurons.
+
+        Args:
+            source_ids: IDs of neurons to merge (will be deleted).
+            into_id: ID of the target neuron (will be preserved).
+
+        Returns:
+            The updated target neuron with merged content.
+
+        Raises:
+            ValueError: If the target neuron does not exist.
         """
         target = await self.circuit.get_neuron(into_id)
         if target is None:

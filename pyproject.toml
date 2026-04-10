@@ -47,3 +47,9 @@ members = [
 spikuit-core = { workspace = true }
 spikuit-agents = { workspace = true }
 spikuit-cli = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "mkdocs-material>=9.7.6",
+    "mkdocstrings[python]>=1.0.3",
+]

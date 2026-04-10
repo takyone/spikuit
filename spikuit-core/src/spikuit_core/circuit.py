@@ -28,20 +28,30 @@ _GRADE_TO_RATING: dict[Grade, Rating] = {
 
 
 class Circuit:
-    """A neural circuit — the full knowledge graph with persistence.
+    """The knowledge graph engine — FSRS scheduling + NetworkX graph + propagation.
 
-    Usage::
+    Circuit is the main entry point for spikuit-core. It owns the database,
+    the in-memory NetworkX graph, and exposes all operations that external
+    layers (CLI, agents, sessions) need.
 
-        circuit = Circuit()
+    Example:
+        ```python
+        circuit = Circuit(db_path="brain.db")
         await circuit.connect()
 
-        neuron = Neuron.create("# functor\\n\\n圏の間の写像。")
+        neuron = Neuron.create("# Functor\\n\\nA mapping between categories.")
         await circuit.add_neuron(neuron)
 
         spike = Spike(neuron_id=neuron.id, grade=Grade.FIRE)
         await circuit.fire(spike)
 
         await circuit.close()
+        ```
+
+    Args:
+        db_path: Path to the SQLite database file.
+        plasticity: Tunable learning parameters (uses defaults if ``None``).
+        embedder: Embedding provider for semantic search (optional).
     """
 
     def __init__(
@@ -105,7 +115,17 @@ class Circuit:
     # -- Neuron operations --------------------------------------------------
 
     async def add_neuron(self, neuron: Neuron) -> Neuron:
-        """Add a Neuron to the circuit. Initializes FSRS card and embedding."""
+        """Add a Neuron to the circuit.
+
+        Initializes an FSRS card and auto-embeds content if an embedder
+        is configured.
+
+        Args:
+            neuron: The neuron to add.
+
+        Returns:
+            The same neuron (pass-through for chaining).
+        """
         await self._db.insert_neuron(neuron)
         self._graph.add_node(neuron.id, type=neuron.type, domain=neuron.domain)
 
@@ -152,7 +172,23 @@ class Circuit:
         type: SynapseType,
         weight: float = 0.5,
     ) -> list[Synapse]:
-        """Add a Synapse. Bidirectional types auto-create the reverse edge."""
+        """Add a Synapse between two neurons.
+
+        Bidirectional types (``contrasts``, ``relates_to``) automatically
+        create the reverse edge as well.
+
+        Args:
+            pre: Source neuron ID.
+            post: Target neuron ID.
+            type: Connection semantics.
+            weight: Initial edge weight (default ``0.5``).
+
+        Returns:
+            List of created synapses (1 for directed, 2 for bidirectional).
+
+        Raises:
+            ValueError: If either neuron does not exist in the circuit.
+        """
         if pre not in self._graph or post not in self._graph:
             raise ValueError(
                 f"Both neurons must exist in the circuit. "
@@ -198,9 +234,23 @@ class Circuit:
     # -- Spike (fire) -------------------------------------------------------
 
     async def fire(self, spike: Spike) -> Card:
-        """Record a review event, update FSRS state, propagate activation.
+        """Record a review event, update FSRS state, and propagate activation.
 
-        This is the single contact point for external layers (Quiz, CLI).
+        This is the central method for all review operations. The full
+        pipeline is:
+
+        1. Record spike to DB
+        2. FSRS: update stability, difficulty, schedule next review
+        3. APPNP: propagate activation to neighbors (pressure deltas)
+        4. Reset source neuron pressure
+        5. STDP: update edge weights based on co-fire timing
+        6. Record last-fire timestamp for future STDP
+
+        Args:
+            spike: The review event to process.
+
+        Returns:
+            The updated FSRS Card with new scheduling state.
         """
         # 1. Record spike
         await self._db.insert_spike(spike)
@@ -342,10 +392,21 @@ class Circuit:
     ) -> list[Neuron]:
         """Retrieve neurons matching a query with graph-weighted scoring.
 
-        Score = text_sim × (1 + retrievability + centrality + pressure)
+        Scoring formula::
 
-        text_sim is max(keyword_sim, semantic_sim) when an embedder is
-        available, or just keyword_sim otherwise.
+            score = max(keyword_sim, semantic_sim)
+                    × (1 + retrievability + centrality + pressure + boost)
+
+        ``semantic_sim`` uses sqlite-vec KNN when an embedder is configured;
+        otherwise only keyword matching is used. ``boost`` is accumulated
+        through [`QABotSession`][spikuit_core.QABotSession] feedback.
+
+        Args:
+            query: Search query text.
+            limit: Maximum number of results.
+
+        Returns:
+            List of matching neurons, sorted by score descending.
         """
         if not query.strip():
             return []
@@ -437,7 +498,15 @@ class Circuit:
     # -- Ensemble -----------------------------------------------------------
 
     def ensemble(self, neuron_id: str, *, hops: int = 2) -> list[str]:
-        """Get the N-hop neighborhood of a neuron."""
+        """Get the N-hop neighborhood of a neuron.
+
+        Args:
+            neuron_id: Center neuron.
+            hops: Radius of the ego graph (default 2).
+
+        Returns:
+            List of neighbor neuron IDs (excluding the center).
+        """
         if neuron_id not in self._graph:
             return []
         subgraph = nx.ego_graph(self._graph, neuron_id, radius=hops)
@@ -473,7 +542,14 @@ class Circuit:
     # -- Embedding backfill -------------------------------------------------
 
     async def embed_all(self, *, batch_size: int = 32) -> int:
-        """Embed all neurons that don't have embeddings yet. Returns count."""
+        """Backfill embeddings for all neurons that don't have one yet.
+
+        Args:
+            batch_size: Number of texts to embed per API call.
+
+        Returns:
+            Number of neurons newly embedded.
+        """
         if self._embedder is None:
             return 0
         all_neurons = await self._db.list_neurons(limit=100_000)

@@ -19,7 +19,14 @@ import msgspec
 
 
 class SynapseType(str, Enum):
-    """Types of synaptic connections between Neurons."""
+    """Types of synaptic connections between Neurons.
+
+    Attributes:
+        REQUIRES: Directed — A requires understanding B.
+        EXTENDS: Directed — A extends B.
+        CONTRASTS: Bidirectional — A contrasts with B.
+        RELATES_TO: Bidirectional — general association.
+    """
 
     REQUIRES = "requires"
     EXTENDS = "extends"
@@ -28,16 +35,24 @@ class SynapseType(str, Enum):
 
     @property
     def is_bidirectional(self) -> bool:
+        """Whether this synapse type creates edges in both directions."""
         return self in (SynapseType.CONTRASTS, SynapseType.RELATES_TO)
 
 
 class Grade(int, Enum):
-    """Spike grade — maps to FSRS Rating."""
+    """Spike grade — maps to FSRS Rating.
 
-    MISS = 1      # 失火 (Again)
-    WEAK = 2      # 弱発火 (Hard)
-    FIRE = 3      # 発火 (Good)
-    STRONG = 4    # 強発火 (Easy)
+    Attributes:
+        MISS: Failed recall (FSRS Again).
+        WEAK: Uncertain recall (FSRS Hard).
+        FIRE: Correct recall (FSRS Good).
+        STRONG: Perfect recall (FSRS Easy).
+    """
+
+    MISS = 1
+    WEAK = 2
+    FIRE = 3
+    STRONG = 4
 
 
 # ---------------------------------------------------------------------------
@@ -50,6 +65,15 @@ class Neuron(msgspec.Struct, kw_only=True):
 
     Content is stored as Markdown with optional YAML-style frontmatter.
     Only minimal metadata is extracted into fields for indexing.
+
+    Attributes:
+        id: Unique identifier (auto-generated as ``n-<hex12>``).
+        content: Markdown content, optionally with YAML frontmatter.
+        type: Category tag (e.g. ``"concept"``, ``"fact"``, ``"procedure"``).
+        domain: Knowledge domain (e.g. ``"math"``, ``"french"``).
+        source: Origin URL or reference.
+        created_at: UTC timestamp, auto-set on creation.
+        updated_at: UTC timestamp, auto-set on creation and mutation.
     """
 
     id: str
@@ -69,7 +93,19 @@ class Neuron(msgspec.Struct, kw_only=True):
 
     @classmethod
     def create(cls, content: str, **overrides: Any) -> Neuron:
-        """Create a Neuron from Markdown content, extracting frontmatter."""
+        """Create a Neuron from Markdown content, extracting frontmatter.
+
+        Generates a unique ID and parses YAML-style frontmatter for
+        ``type``, ``domain``, and ``source`` fields. Explicit overrides
+        take precedence over frontmatter values.
+
+        Args:
+            content: Markdown text, optionally starting with ``---`` frontmatter.
+            **overrides: Field overrides (``id``, ``type``, ``domain``, ``source``).
+
+        Returns:
+            A new Neuron instance.
+        """
         neuron_id = overrides.pop("id", f"n-{uuid4().hex[:12]}")
         fm = _parse_frontmatter(content)
         return cls(
@@ -89,8 +125,18 @@ class Neuron(msgspec.Struct, kw_only=True):
 class Synapse(msgspec.Struct, kw_only=True):
     """A directed connection between two Neurons.
 
-    Bidirectional types (contrasts, relates_to) are stored as two Synapse
-    objects — one in each direction. Weights may be asymmetric.
+    Bidirectional types (``contrasts``, ``relates_to``) are stored as two
+    Synapse objects — one in each direction. Weights may be asymmetric.
+
+    Attributes:
+        pre: Source neuron ID (pre-synaptic).
+        post: Target neuron ID (post-synaptic).
+        type: Connection semantics (see [`SynapseType`][spikuit_core.SynapseType]).
+        weight: Edge strength, updated by STDP (range: ``[weight_floor, weight_ceiling]``).
+        co_fires: Number of times both endpoints fired within ``tau_stdp``.
+        last_co_fire: Timestamp of the most recent co-fire event.
+        created_at: UTC timestamp, auto-set on creation.
+        updated_at: UTC timestamp, auto-set on creation and mutation.
     """
 
     pre: str
@@ -119,7 +165,14 @@ class Spike(msgspec.Struct, kw_only=True):
     """A review event — an action potential in the Circuit.
 
     Created by external layers (Quiz, CLI, etc.) and fed into
-    circuit.fire() to trigger FSRS update + propagation.
+    [`Circuit.fire()`][spikuit_core.Circuit.fire] to trigger
+    FSRS update + propagation.
+
+    Attributes:
+        neuron_id: The neuron being reviewed.
+        grade: Review quality (see [`Grade`][spikuit_core.Grade]).
+        fired_at: UTC timestamp, auto-set to now.
+        session_id: Optional session identifier for grouping spikes.
     """
 
     neuron_id: str
@@ -138,7 +191,26 @@ class Spike(msgspec.Struct, kw_only=True):
 
 
 class Plasticity(msgspec.Struct, kw_only=True, frozen=True):
-    """Plasticity parameters — configurable per Circuit. Immutable."""
+    """Tunable learning parameters — configurable per Circuit. Immutable.
+
+    Controls how activation propagates, how edges strengthen/weaken,
+    and how pressure accumulates and decays.
+
+    Attributes:
+        alpha: APPNP teleport probability (higher = more local).
+        propagation_steps: APPNP power-iteration steps.
+        tau_stdp: STDP time window in days.
+        a_plus: STDP LTP amplitude (pre-before-post strengthening).
+        a_minus: STDP LTD amplitude (post-before-pre weakening).
+        tau_m: LIF membrane time constant in days (pressure decay rate).
+        pressure_threshold: LIF pressure threshold for spontaneous review.
+        pressure_rest: LIF resting pressure.
+        pressure_reset: Pressure value after a neuron fires.
+        theta_pro: STC promotion threshold (co-fire count).
+        schema_factor: Bonus factor for schema-connected neurons.
+        weight_floor: Minimum allowed edge weight.
+        weight_ceiling: Maximum allowed edge weight.
+    """
 
     # APPNP propagation
     alpha: float = 0.15
@@ -172,12 +244,19 @@ class Plasticity(msgspec.Struct, kw_only=True, frozen=True):
 
 
 class ScaffoldLevel(str, Enum):
-    """How much support the learner needs."""
+    """How much support the learner needs (ZPD-inspired).
 
-    FULL = "full"          # New / struggling — max hints, context, easy questions
-    GUIDED = "guided"      # Progressing — hints on request, some context
-    MINIMAL = "minimal"    # Competent — harder questions, less hand-holding
-    NONE = "none"          # Mastered — application / synthesis level
+    Attributes:
+        FULL: New or struggling — max hints, context, easy questions.
+        GUIDED: Progressing — hints on request, some context.
+        MINIMAL: Competent — harder questions, less hand-holding.
+        NONE: Mastered — application / synthesis level.
+    """
+
+    FULL = "full"
+    GUIDED = "guided"
+    MINIMAL = "minimal"
+    NONE = "none"
 
 
 class Scaffold(msgspec.Struct, kw_only=True):
@@ -185,12 +264,18 @@ class Scaffold(msgspec.Struct, kw_only=True):
 
     Determines how much support a Learn session provides,
     based on FSRS state, graph context, and pressure.
+
+    Attributes:
+        level: Current support level.
+        hints: Auto-generated hint strings.
+        context: IDs of strong neighbors (scaffolding material).
+        gaps: IDs of weak prerequisites (should study first).
     """
 
     level: ScaffoldLevel = ScaffoldLevel.FULL
     hints: list[str] = msgspec.field(default_factory=list)
-    context: list[str] = msgspec.field(default_factory=list)   # strong neighbor IDs
-    gaps: list[str] = msgspec.field(default_factory=list)      # weak prerequisite IDs
+    context: list[str] = msgspec.field(default_factory=list)
+    gaps: list[str] = msgspec.field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -199,16 +284,31 @@ class Scaffold(msgspec.Struct, kw_only=True):
 
 
 class QuizRequest(msgspec.Struct, kw_only=True):
-    """Input for quiz generation — what to ask and how."""
+    """Input for quiz generation — what to ask and how.
 
-    primary: str                          # primary neuron ID
-    supporting: list[str] = msgspec.field(default_factory=list)  # supporting neuron IDs
+    Attributes:
+        primary: Primary neuron ID to quiz on.
+        supporting: Supporting neuron IDs for context.
+        scaffold: Scaffolding state for difficulty adaptation.
+        quiz_type: Question style — ``"recall"``, ``"recognition"``,
+            ``"application"``, ``"synthesis"``, or ``None`` for auto.
+    """
+
+    primary: str
+    supporting: list[str] = msgspec.field(default_factory=list)
     scaffold: Scaffold = msgspec.field(default_factory=Scaffold)
-    quiz_type: str | None = None          # "recall" | "recognition" | "application" | "synthesis" | None (auto)
+    quiz_type: str | None = None
 
 
 class QuizItem(msgspec.Struct, kw_only=True):
-    """A generated quiz question (filled by LLM or template)."""
+    """A generated quiz question (filled by LLM or template).
+
+    Attributes:
+        question: The question text.
+        answer: The expected answer.
+        hints: Progressive hints (reveal one at a time).
+        grading_criteria: Free-text criteria for LLM-based grading.
+    """
 
     question: str
     answer: str
@@ -217,9 +317,14 @@ class QuizItem(msgspec.Struct, kw_only=True):
 
 
 class QuizResult(msgspec.Struct, kw_only=True):
-    """Result of a quiz — per-neuron grades + overall."""
+    """Result of a quiz — per-neuron grades + overall.
 
-    grades: dict[str, Grade]              # neuron_id → Grade
+    Attributes:
+        grades: Mapping of neuron ID to grade.
+        overall: Aggregate grade for the quiz.
+    """
+
+    grades: dict[str, Grade]
     overall: Grade
 
 

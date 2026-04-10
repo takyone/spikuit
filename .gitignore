@@ -40,3 +40,6 @@ htmlcov/
 .coverage
 .coverage.*
 spkt-circuit.html
+
+# MkDocs
+site/

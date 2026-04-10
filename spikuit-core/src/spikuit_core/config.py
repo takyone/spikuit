@@ -42,7 +42,16 @@ provider = "none"
 
 @dataclass
 class EmbedderConfig:
-    """Embedder configuration parsed from config.toml."""
+    """Embedder configuration parsed from ``config.toml``.
+
+    Attributes:
+        provider: ``"openai-compat"``, ``"ollama"``, or ``"none"``.
+        base_url: API base URL.
+        model: Model identifier.
+        dimension: Embedding vector dimension.
+        api_key: Bearer token (OpenAI-compat only).
+        timeout: HTTP request timeout in seconds.
+    """
 
     provider: str = "none"
     base_url: str = ""
@@ -54,7 +63,13 @@ class EmbedderConfig:
 
 @dataclass
 class BrainConfig:
-    """Full Brain configuration."""
+    """Full Brain configuration — parsed from ``.spikuit/config.toml``.
+
+    Attributes:
+        name: Brain name (defaults to directory name).
+        root: Directory containing ``.spikuit/``.
+        embedder: Embedder settings.
+    """
 
     name: str = "default"
     root: Path = field(default_factory=lambda: Path.cwd())
@@ -62,25 +77,36 @@ class BrainConfig:
 
     @property
     def spikuit_dir(self) -> Path:
+        """Path to the ``.spikuit/`` directory."""
         return self.root / SPIKUIT_DIR
 
     @property
     def db_path(self) -> Path:
+        """Path to the SQLite database file."""
         return self.spikuit_dir / DB_FILE
 
     @property
     def config_path(self) -> Path:
+        """Path to ``config.toml``."""
         return self.spikuit_dir / CONFIG_FILE
 
     @property
     def cache_path(self) -> Path:
+        """Path to the cache directory."""
         return self.spikuit_dir / CACHE_DIR
 
 
 def find_spikuit_root(start: Path | None = None) -> Path | None:
-    """Walk up from start to find a directory containing .spikuit/.
+    """Walk up from ``start`` to find a directory containing ``.spikuit/``.
 
-    Returns the directory containing .spikuit/, or None if not found.
+    Behaves like ``git``'s root discovery — walks parent directories
+    until ``.spikuit/`` is found or the filesystem root is reached.
+
+    Args:
+        start: Starting directory (defaults to CWD).
+
+    Returns:
+        The directory containing ``.spikuit/``, or ``None`` if not found.
     """
     current = (start or Path.cwd()).resolve()
     while True:
@@ -126,9 +152,24 @@ def init_brain(
     embedder_model: str = "",
     embedder_dimension: int = 768,
 ) -> BrainConfig:
-    """Initialize a new .spikuit/ directory with config.toml.
+    """Initialize a new ``.spikuit/`` directory with ``config.toml``.
 
-    Returns the BrainConfig for the initialized brain.
+    Creates the directory structure and writes a config file.
+    Equivalent to ``spkt init``.
+
+    Args:
+        path: Target directory (defaults to CWD).
+        name: Brain name (defaults to directory name).
+        embedder_provider: ``"openai-compat"``, ``"ollama"``, or ``"none"``.
+        embedder_base_url: API base URL for embedder.
+        embedder_model: Model identifier for embedder.
+        embedder_dimension: Embedding vector dimension.
+
+    Returns:
+        The BrainConfig for the initialized brain.
+
+    Raises:
+        FileExistsError: If ``.spikuit/`` already exists.
     """
     root = (path or Path.cwd()).resolve()
     spikuit_dir = root / SPIKUIT_DIR

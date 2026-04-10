@@ -14,7 +14,13 @@ import httpx
 
 
 class Embedder(ABC):
-    """Abstract base for text embedding providers."""
+    """Abstract base for text embedding providers.
+
+    Subclasses must implement [`dimension`][spikuit_core.Embedder.dimension]
+    and [`embed`][spikuit_core.Embedder.embed]. Override
+    [`embed_batch`][spikuit_core.Embedder.embed_batch] for providers that
+    support batched requests natively.
+    """
 
     @property
     @abstractmethod
@@ -24,26 +30,53 @@ class Embedder(ABC):
 
     @abstractmethod
     async def embed(self, text: str) -> list[float]:
-        """Embed a single text string."""
+        """Embed a single text string.
+
+        Args:
+            text: Input text to embed.
+
+        Returns:
+            Vector of floats with length equal to ``dimension``.
+        """
         ...
 
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        """Embed multiple texts. Default: sequential calls to embed()."""
+        """Embed multiple texts.
+
+        Default implementation calls ``embed()`` sequentially.
+        Override for providers that support native batching.
+
+        Args:
+            texts: List of input texts.
+
+        Returns:
+            List of embedding vectors, one per input text.
+        """
         return [await self.embed(t) for t in texts]
 
 
 class OpenAICompatEmbedder(Embedder):
-    """Embedder using any OpenAI-compatible /v1/embeddings endpoint.
+    """Embedder using any OpenAI-compatible ``/v1/embeddings`` endpoint.
 
-    Works with: LM Studio, Ollama (with /v1), vLLM, OpenAI, etc.
+    Works with LM Studio, Ollama (``/v1``), vLLM, OpenAI, and any
+    service that implements the OpenAI embeddings API.
 
-    Usage::
-
+    Example:
+        ```python
         embedder = OpenAICompatEmbedder(
             base_url="http://localhost:1234/v1",
             model="text-embedding-nomic-embed-text-v1.5",
             dimension=768,
         )
+        vec = await embedder.embed("hello world")
+        ```
+
+    Args:
+        base_url: API base URL (without trailing slash).
+        model: Model identifier.
+        dimension: Expected embedding dimension.
+        api_key: Bearer token (default ``"not-needed"`` for local servers).
+        timeout: HTTP request timeout in seconds.
     """
 
     def __init__(
@@ -84,15 +117,25 @@ class OpenAICompatEmbedder(Embedder):
 
 
 class OllamaEmbedder(Embedder):
-    """Embedder using Ollama's native /api/embed endpoint.
+    """Embedder using Ollama's native ``/api/embed`` endpoint.
 
-    Usage::
+    Use this when connecting directly to Ollama without the OpenAI
+    compatibility layer.
 
+    Example:
+        ```python
         embedder = OllamaEmbedder(
             base_url="http://localhost:11434",
             model="nomic-embed-text",
             dimension=768,
         )
+        ```
+
+    Args:
+        base_url: Ollama server URL.
+        model: Model name as shown in ``ollama list``.
+        dimension: Expected embedding dimension.
+        timeout: HTTP request timeout in seconds.
     """
 
     def __init__(
@@ -128,7 +171,11 @@ class OllamaEmbedder(Embedder):
 
 
 class NullEmbedder(Embedder):
-    """Returns zero vectors. For testing and fallback when no provider is available."""
+    """Returns zero vectors. For testing and when no provider is configured.
+
+    Args:
+        dimension: Vector dimension (default 768).
+    """
 
     def __init__(self, dimension: int = 768) -> None:
         self._dimension = dimension
@@ -158,7 +205,22 @@ def create_embedder(
     api_key: str = "not-needed",
     timeout: float = 30.0,
 ) -> Embedder | None:
-    """Create an Embedder from config values. Returns None for 'none'."""
+    """Factory: create an Embedder from config values.
+
+    Args:
+        provider: ``"openai-compat"``, ``"ollama"``, or ``"none"``.
+        base_url: API base URL.
+        model: Model identifier.
+        dimension: Embedding dimension.
+        api_key: Bearer token (OpenAI-compat only).
+        timeout: HTTP timeout in seconds.
+
+    Returns:
+        An Embedder instance, or ``None`` if provider is ``"none"``.
+
+    Raises:
+        ValueError: If the provider is unknown.
+    """
     if provider == "none":
         return None
     if provider == "openai-compat":
@@ -185,11 +247,25 @@ def create_embedder(
 
 
 def vec_to_blob(vec: list[float]) -> bytes:
-    """Pack a float list into a binary blob for sqlite-vec."""
+    """Pack a float list into a little-endian binary blob for sqlite-vec.
+
+    Args:
+        vec: Embedding vector.
+
+    Returns:
+        Binary blob suitable for ``INSERT INTO neuron_vec``.
+    """
     return struct.pack(f"{len(vec)}f", *vec)
 
 
 def blob_to_vec(blob: bytes) -> list[float]:
-    """Unpack a sqlite-vec binary blob into a float list."""
+    """Unpack a sqlite-vec binary blob into a float list.
+
+    Args:
+        blob: Binary blob from sqlite-vec.
+
+    Returns:
+        List of floats.
+    """
     n = len(blob) // 4
     return list(struct.unpack(f"{n}f", blob))
