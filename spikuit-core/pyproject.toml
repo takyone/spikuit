@@ -3,7 +3,17 @@ name = "spikuit-core"
 version = "0.0.0"
 description = "Core engine: FSRS scheduling + Knowledge Graph + Spreading Activation"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "aiosqlite>=0.20.0",
+    "networkx>=3.2",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
 
 [build-system]
 requires = ["hatchling"]
