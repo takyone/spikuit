@@ -41,8 +41,8 @@ you combine a knowledge graph, spaced repetition, and AI agents into one system.
 ```
 You: /tutor
 
-Tutor: You have 5 concepts due. Let's start with PageRank —
-       it's a prerequisite for APPNP which is also due.
+Tutor: You have 5 concepts due. Let's start with Functor —
+       it's a prerequisite for Monad which is also due.
        [teaches the concept, then quizzes you]
 
 You:   [answers]

@@ -26,8 +26,8 @@ how well you know each concept, and how central it is in your graph.
 ```
 > /tutor
 
-Tutor: PageRank has low stability and is a prerequisite for APPNP.
-       Let me explain PageRank first, then we'll test your understanding.
+Tutor: "Functor" has low stability and is a prerequisite for "Monad".
+       Let me explain Functor first, then we'll test your understanding.
        ...
        [teaches, quizzes, gives feedback, re-explains weak areas]
 ```

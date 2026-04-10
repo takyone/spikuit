@@ -106,43 +106,41 @@ quiz you to check understanding, give feedback on mistakes, or answer your quest
 ```
 > /tutor
 
-Tutor: You have 5 concepts due. PageRank has low stability and is
-       a prerequisite for APPNP, so let's start there.
+Tutor: You have 5 concepts due. Functor has low stability and is
+       a prerequisite for Monad, so let's start there.
 
-       [LECTURE] PageRank is an algorithm that scores nodes in a graph
-       by their link structure. Imagine a random walker on the web...
+       [LECTURE] A Functor is a mapping between categories that
+       preserves structure. Think of it as a box you can map over...
        (explains with examples, using concepts you already know)
 
        Let me check your understanding.
 
-       [QUIZ] Why does PageRank need a "teleport" mechanism?
+       [QUIZ] What must a Functor preserve when mapping?
 
-You:   Because some pages have no outgoing links?
+You:   The structure of the category?
 
-Tutor: [FEEDBACK] That's part of it — dangling nodes are one reason.
-       But there's also the question of convergence on disconnected
-       graphs. The teleport probability ensures the random walker
-       can always reach any page.
+Tutor: [FEEDBACK] That's on the right track, but let's be more precise.
+       A Functor must preserve identity morphisms and composition.
+       So fmap id = id, and fmap (f . g) = fmap f . fmap g.
 
        Let me try a different angle.
 
-       [QUIZ] If you remove the teleport (set it to 0), what happens
-       to the PageRank computation?
+       [QUIZ] In Haskell, why is `fmap` different from `map`?
 
-You:   It might not converge?
+You:   map only works on lists, fmap works on any Functor?
 
-Tutor: [FEEDBACK] Exactly! Without teleport, the random walker can get
-       stuck in cycles or dead ends. ✅ fire
+Tutor: [FEEDBACK] Exactly! `map` is specialized to lists, while `fmap`
+       is the generalized version for any Functor instance. ✅ fire
        Stability: 3.2 → 8.1 days
 
-       Now let's move to APPNP, which builds on what you just learned...
+       Now let's move to Monad, which builds on what you just learned...
 ```
 
 **What the tutor can do:**
 
 | Action | When | Example |
 |--------|------|---------|
-| Diagnose | Session start | "PageRank is weak and blocks APPNP — start there" |
+| Diagnose | Session start | "Functor is weak and blocks Monad — start there" |
 | Lecture | New or weak concept | Structured explanation using known concepts as anchors |
 | Quiz | After teaching | Varied questions (not just "what is X?") |
 | Feedback | After your answer | Explains why right/wrong, what was missing |
@@ -200,16 +198,16 @@ improves through the conversation.
 
 Ask me anything about your brain.
 
-> How does APPNP differ from standard GCN?
+> What's the difference between Functor and Applicative?
 
-APPNP separates feature transformation (MLP) from propagation
-(Personalized PageRank). This lets it propagate signals deeper
-without the over-smoothing problem that limits GCN to 2-3 layers.
-The teleport probability α controls locality...
+A Functor lets you map a function over a wrapped value (fmap).
+An Applicative extends this — it lets you apply a wrapped function
+to a wrapped value (<*>). Every Applicative is a Functor, but
+Applicative adds the ability to combine independent effects...
 
-Sources: n-abc123 (APPNP), n-def456 (GCN), n-ghi789 (Over-smoothing)
+Sources: n-abc123 (Functor), n-def456 (Applicative), n-ghi789 (Monad)
 
-> Can you go deeper on the over-smoothing part?
+> Can you go deeper on how Applicative relates to Monad?
 
 [Previous results automatically penalized — retrieves new material]
 

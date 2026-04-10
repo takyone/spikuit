@@ -24,8 +24,8 @@ spkt link <monad-id> <functor-id> -t requires
 ```
 > /tutor
 
-Tutor: PageRankの安定性が低く、APPNPの前提知識になっています。
-       まずPageRankから説明して、理解度を確認しましょう。
+Tutor: 「Functor」の理解度が低く、「Monad」の前提知識になっています。
+       まずFunctorから説明して、理解度を確認しましょう。
        ...
        [教える → クイズ → フィードバック → 弱い部分を再説明]
 ```
