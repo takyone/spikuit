@@ -8,7 +8,11 @@ Spikuitの設計は3つの分野から着想を得ています。それぞれの
 
 #### ニューロンとスパイク
 
-![ニューロン発火フロー](images/neuron-flow.svg)
+```mermaid
+graph LR
+    A[入力] --> B[蓄積] --> C{閾値?} --> D[発火!] --> E[伝播]
+    D -.->|漏れ / 減衰| B
+```
 
 - 生体ニューロンは離散的な電気パルス（活動電位）で通信する
 - 入力を蓄積し、閾値を超えると発火、その後リセット
@@ -26,7 +30,9 @@ Spikuitの設計は3つの分野から着想を得ています。それぞれの
 
 ヘッブ則に時間的方向性を加えたもの:
 
-![STDP曲線](images/stdp.svg)
+<div class="chart-container">
+  <canvas data-chart="stdp"></canvas>
+</div>
 
 - Pre→Post の順（因果的）→ 接続強化（LTP: 長期増強）
 - Post→Pre の順（逆順）→ 接続弱化（LTD: 長期抑圧）
@@ -35,7 +41,9 @@ Spikuitの設計は3つの分野から着想を得ています。それぞれの
 
 #### LIF（漏れ積分発火モデル）
 
-![LIF圧力モデル](images/lif.svg)
+<div class="chart-container">
+  <canvas data-chart="lif"></canvas>
+</div>
 
 - ニューロンは入力を蓄積（積分）しつつ、徐々に電荷を失う（漏れ）
 - 高圧力 = 「この概念は復習が必要」というシステムからのサイン
@@ -63,7 +71,9 @@ graph LR
 
 #### 忘却曲線と間隔反復
 
-![忘却曲線と間隔反復](images/forgetting-curve.svg)
+<div class="chart-container">
+  <canvas data-chart="forgetting-curve"></canvas>
+</div>
 
 - 記憶は時間とともに指数関数的に減衰する（Ebbinghaus, 1885）
 - 検索成功のたびに記憶痕跡が強化され、将来の減衰が遅くなる
@@ -78,7 +88,18 @@ graph LR
 
 #### ZPDとスキャフォールディング
 
-![最近接発達領域](images/zpd.svg)
+<div class="zpd-diagram">
+  <div class="zpd-outer">
+    <span class="zpd-label">まだできない</span>
+    <div class="zpd-mid">
+      <span class="zpd-label">ZPD: 支援があればできる</span>
+      <div class="zpd-inner">
+        <span class="zpd-label">独力でできる</span>
+        <span class="zpd-sublabel">（習得済み）</span>
+      </div>
+    </div>
+  </div>
+</div>
 
 - ZPD（Vygotsky, 1978）: 独力でできることと、支援があればできることのギャップ
 - スキャフォールディング（Wood, Bruner & Ross, 1976）: 能力向上に伴い撤去される一時的サポート

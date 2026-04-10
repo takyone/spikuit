@@ -32,6 +32,13 @@ theme:
   icon:
     repo: fontawesome/brands/github
 
+extra_javascript:
+  - https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js
+  - javascripts/charts.js
+
+extra_css:
+  - stylesheets/charts.css
+
 markdown_extensions:
   - admonition
   - pymdownx.details

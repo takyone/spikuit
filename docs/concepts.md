@@ -8,7 +8,11 @@ Spikuit draws from three fields. This section is a quick primer on each.
 
 #### Neurons and Spikes
 
-![Neuron firing flow](images/neuron-flow.svg)
+```mermaid
+graph LR
+    A[input] --> B[accumulate] --> C{threshold?} --> D[fire!] --> E[propagate]
+    D -.->|leak / decay| B
+```
 
 - Biological neurons communicate through discrete electrical pulses (action potentials)
 - A neuron accumulates input, fires when it crosses a threshold, then resets
@@ -26,7 +30,9 @@ Spikuit draws from three fields. This section is a quick primer on each.
 
 Refines Hebb's rule with temporal direction:
 
-![STDP curve](images/stdp.svg)
+<div class="chart-container">
+  <canvas data-chart="stdp"></canvas>
+</div>
 
 - Pre fires before post (causal) → connection strengthens (LTP)
 - Post fires before pre (reverse) → connection weakens (LTD)
@@ -35,7 +41,9 @@ Refines Hebb's rule with temporal direction:
 
 #### LIF (Leaky Integrate-and-Fire)
 
-![LIF pressure model](images/lif.svg)
+<div class="chart-container">
+  <canvas data-chart="lif"></canvas>
+</div>
 
 - Neurons accumulate input (integration) and gradually lose charge (leak)
 - High pressure = the system is telling you this concept needs review
@@ -63,7 +71,9 @@ graph LR
 
 #### Forgetting Curve and Spaced Repetition
 
-![Forgetting curve with spaced repetition](images/forgetting-curve.svg)
+<div class="chart-container">
+  <canvas data-chart="forgetting-curve"></canvas>
+</div>
 
 - Memory decays exponentially over time (Ebbinghaus, 1885)
 - Each successful retrieval strengthens the trace and slows future decay
@@ -78,7 +88,18 @@ graph LR
 
 #### ZPD and Scaffolding
 
-![Zone of Proximal Development](images/zpd.svg)
+<div class="zpd-diagram">
+  <div class="zpd-outer">
+    <span class="zpd-label">Can't do (yet)</span>
+    <div class="zpd-mid">
+      <span class="zpd-label">ZPD: can do with support</span>
+      <div class="zpd-inner">
+        <span class="zpd-label">Can do alone</span>
+        <span class="zpd-sublabel">(mastered)</span>
+      </div>
+    </div>
+  </div>
+</div>
 
 - ZPD (Vygotsky, 1978): the gap between what you can do alone vs. with guidance
 - Scaffolding (Wood, Bruner & Ross, 1976): temporary support, gradually removed as competence grows
