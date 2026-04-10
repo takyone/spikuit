@@ -1,6 +1,6 @@
 [project]
 name = "spikuit"
-version = "0.0.0"
+version = "0.1.0"
 description = "Synapse-inspired spaced repetition engine — FSRS × Knowledge Graph × Spreading Activation"
 readme = "README.md"
 license = "Apache-2.0"
