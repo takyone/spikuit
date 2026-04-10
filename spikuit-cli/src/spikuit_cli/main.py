@@ -181,6 +181,12 @@ def init(
         else:
             typer.echo(f"  embedder: none (edit config.toml to enable)")
 
+        # Agent CLI skills installation
+        if interactive:
+            typer.echo("")
+            if typer.confirm("Install skills for an Agent CLI? (/tutor, /learn, /qabot)", default=False):
+                _install_agent_skills(config.root)
+
 
 # -------------------------------------------------------------------
 # config
@@ -893,6 +899,51 @@ def skills_list() -> None:
 # -------------------------------------------------------------------
 # Helpers
 # -------------------------------------------------------------------
+
+
+def _install_agent_skills(brain_root: Path) -> None:
+    """Interactive Agent CLI selection and skills installation."""
+    import importlib.resources
+
+    agents = {
+        "1": ("Claude Code", ".claude/skills"),
+        "2": ("Cursor", ".cursor/skills"),
+        "3": ("Codex", ".codex/skills"),
+    }
+
+    typer.echo("Which Agent CLI do you use?")
+    for key, (name, _) in agents.items():
+        typer.echo(f"  {key}) {name}")
+
+    choice = typer.prompt("Select", default="1")
+    if choice not in agents:
+        typer.echo(f"Invalid choice: {choice}", err=True)
+        return
+
+    agent_name, skills_rel = agents[choice]
+    target = brain_root / skills_rel
+
+    skills_pkg = importlib.resources.files("spikuit_cli") / "skills"
+    skill_names = ["tutor", "learn", "qabot"]
+
+    installed = 0
+    for name in skill_names:
+        src = skills_pkg / name / "SKILL.md"
+        if not src.is_file():
+            continue
+        dest_dir = target / name
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        content = src.read_text(encoding="utf-8")
+        (dest_dir / "SKILL.md").write_text(content, encoding="utf-8")
+        installed += 1
+
+    if installed > 0:
+        typer.echo(f"\nInstalled {installed} skill(s) for {agent_name} at {target}/")
+        for name in skill_names:
+            if (target / name / "SKILL.md").exists():
+                typer.echo(f"  /{name}")
+    else:
+        typer.echo("No skills installed.", err=True)
 
 
 def _extract_title(content: str) -> str:
