@@ -809,6 +809,88 @@ def visualize(
 
 
 # -------------------------------------------------------------------
+# skills
+# -------------------------------------------------------------------
+
+skills_app = typer.Typer(help="Manage Spikuit skills for Agent CLIs.")
+app.add_typer(skills_app, name="skills")
+
+
+@skills_app.command(name="install")
+def skills_install(
+    target: Optional[Path] = typer.Option(None, "--target", "-t", help="Target directory (default: .claude/skills/)"),
+) -> None:
+    """Install Spikuit skills (SKILL.md) for Agent CLIs.
+
+    Copies /tutor, /learn, and /qabot skill definitions into the target
+    directory so they can be invoked from Agent CLIs like Claude Code.
+    """
+    import importlib.resources
+    import shutil
+
+    # Determine source: bundled skills inside this package
+    skills_pkg = importlib.resources.files("spikuit_cli") / "skills"
+
+    # Determine target
+    if target is None:
+        target = Path.cwd() / ".claude" / "skills"
+
+    target = Path(target)
+    skill_names = ["tutor", "learn", "qabot"]
+
+    installed = 0
+    for name in skill_names:
+        src = skills_pkg / name / "SKILL.md"
+        if not src.is_file():
+            typer.echo(f"  skip {name}: SKILL.md not found in package", err=True)
+            continue
+
+        dest_dir = target / name
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest_file = dest_dir / "SKILL.md"
+
+        # Read from package resources and write to target
+        content = src.read_text(encoding="utf-8")
+        dest_file.write_text(content, encoding="utf-8")
+        installed += 1
+
+    if installed > 0:
+        typer.echo(f"Installed {installed} skill(s) to {target}/")
+        for name in skill_names:
+            if (target / name / "SKILL.md").exists():
+                typer.echo(f"  /{name}")
+    else:
+        typer.echo("No skills installed.", err=True)
+        raise typer.Exit(1)
+
+
+@skills_app.command(name="list")
+def skills_list() -> None:
+    """List available Spikuit skills."""
+    import importlib.resources
+
+    skills_pkg = importlib.resources.files("spikuit_cli") / "skills"
+    skill_names = ["tutor", "learn", "qabot"]
+
+    typer.echo("Available skills:")
+    for name in skill_names:
+        src = skills_pkg / name / "SKILL.md"
+        if src.is_file():
+            # Read first description line from frontmatter
+            content = src.read_text(encoding="utf-8")
+            desc = ""
+            in_frontmatter = False
+            for line in content.splitlines():
+                if line.strip() == "---":
+                    in_frontmatter = not in_frontmatter
+                    continue
+                if in_frontmatter and line.startswith("description:"):
+                    desc = line.split(":", 1)[1].strip()[:80]
+                    break
+            typer.echo(f"  /{name:8s} {desc}")
+
+
+# -------------------------------------------------------------------
 # Helpers
 # -------------------------------------------------------------------
 

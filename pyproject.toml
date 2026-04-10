@@ -1,16 +1,16 @@
 [project]
 name = "spikuit"
-version = "0.1.0"
-description = "Synapse-inspired spaced repetition engine — FSRS × Knowledge Graph × Spreading Activation"
+version = "0.2.0"
+description = "A knowledge base that gets smarter the more you use it"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
 authors = [
     { name = "takyone", email = "takyone_dev@pm.me" },
 ]
-keywords = ["spaced-repetition", "fsrs", "knowledge-graph", "spreading-activation", "learning"]
+keywords = ["spaced-repetition", "fsrs", "knowledge-graph", "rag", "learning", "ai-tutor"]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Intended Audience :: Education",
     "License :: OSI Approved :: Apache Software License",
@@ -20,11 +20,26 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Education",
 ]
+dependencies = [
+    "aiosqlite>=0.20.0",
+    "fsrs>=6.0.0",
+    "httpx>=0.28.1",
+    "msgspec>=0.19.0",
+    "networkx>=3.2",
+    "numpy>=1.26.0",
+    "pyvis>=0.3.2",
+    "sqlite-vec>=0.1.9",
+    "typer>=0.24.1",
+]
 
 [project.urls]
 Homepage = "https://github.com/takyone/spikuit"
+Documentation = "https://takyone.github.io/spikuit/"
 Repository = "https://github.com/takyone/spikuit"
 Issues = "https://github.com/takyone/spikuit/issues"
+
+[project.scripts]
+spkt = "spikuit_cli.main:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -34,7 +49,10 @@ build-backend = "hatchling.build"
 skip-excluded-dirs = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["spikuit-core/src/spikuit_core"]
+packages = [
+    "spikuit-core/src/spikuit_core",
+    "spikuit-cli/src/spikuit_cli",
+]
 
 [tool.uv.workspace]
 members = [
