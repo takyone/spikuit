@@ -63,8 +63,8 @@ graph LR
     end
 
     classDef fired fill:#E53935,color:#fff,stroke:#B71C1C
-    classDef primed fill:#FFF9C4,stroke:#F9A825
-    classDef inactive fill:#EEEEEE,stroke:#BDBDBD,color:#9E9E9E
+    classDef primed fill:#FFF9C4,stroke:#F9A825,color:#333
+    classDef inactive fill:#EEEEEE,stroke:#BDBDBD,color:#666
     style activated fill:none,stroke:#E0E0E0,stroke-dasharray:4
     style not_activated fill:none,stroke:#E0E0E0,stroke-dasharray:4
 ```
