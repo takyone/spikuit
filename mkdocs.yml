@@ -81,6 +81,7 @@ plugins:
             Scaffold & Learn: Scaffold & Learn
             Config: 設定
             Propagation: 伝播
+            How to Use: 使い方
   - mkdocstrings:
       handlers:
         python:
@@ -100,6 +101,7 @@ nav:
   - Home: index.md
   - Getting Started: getting-started.md
   - Concepts: concepts.md
+  - How to Use: how-to-use.md
   - CLI Reference: cli.md
   - API Reference:
     - reference/index.md

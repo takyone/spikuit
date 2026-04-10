@@ -11,3 +11,5 @@ ZPD-inspired scaffolding and the Learn protocol.
 ::: spikuit_core.Learn
 
 ::: spikuit_core.Flashcard
+
+::: spikuit_core.AutoQuiz
