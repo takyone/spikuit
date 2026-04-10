@@ -53,14 +53,20 @@ Refines Hebb's rule with temporal direction:
 
 ```mermaid
 graph LR
-    dog(("🐕 dog")):::fired --> cat(("cat")):::primed
-    dog --> bone(("bone")):::primed
-    dog --> walk(("walk")):::primed
-    algebra(("algebra")):::inactive
+    subgraph activated [" "]
+        dog(("dog")):::fired -->|primed| cat(("cat")):::primed
+        dog -->|primed| bone(("bone")):::primed
+        dog -->|primed| walk(("walk")):::primed
+    end
+    subgraph not_activated [" "]
+        algebra(("algebra")):::inactive
+    end
 
     classDef fired fill:#E53935,color:#fff,stroke:#B71C1C
     classDef primed fill:#FFF9C4,stroke:#F9A825
-    classDef inactive fill:#F5F5F5,stroke:#BDBDBD,color:#9E9E9E
+    classDef inactive fill:#EEEEEE,stroke:#BDBDBD,color:#9E9E9E
+    style activated fill:none,stroke:#E0E0E0,stroke-dasharray:4
+    style not_activated fill:none,stroke:#E0E0E0,stroke-dasharray:4
 ```
 
 - Activating a concept in memory primes related concepts (Collins & Loftus, 1975)

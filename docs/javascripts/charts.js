@@ -22,7 +22,6 @@ function getColors() {
     decay:     dark ? "#888" : "#BDBDBD",
     review:    "#2196F3",
     fire:      "#4CAF50",
-    bg:        dark ? "#1e1e1e" : "#ffffff",
   };
 }
 
@@ -63,24 +62,50 @@ new MutationObserver(initCharts).observe(document.body, {
 /*  Shared helpers                                                     */
 /* ------------------------------------------------------------------ */
 
-function baseScales(c, xLabel, yLabel) {
-  return {
-    x: {
-      type: "linear",
-      title: { display: true, text: xLabel, color: c.text },
-      ticks: { color: c.text },
-      grid:  { color: c.grid },
+function baseOptions(c, xLabel, yLabel, extra) {
+  var opts = {
+    responsive: true,
+    maintainAspectRatio: true,
+    aspectRatio: 1.8,
+    layout: { padding: { top: 10, right: 16, bottom: 4, left: 4 } },
+    plugins: {
+      legend: {
+        position: "bottom",
+        labels: {
+          color: c.text,
+          usePointStyle: true,
+          pointStyle: "line",
+          padding: 16,
+          font: { size: 12 },
+        },
+      },
     },
-    y: {
-      title: { display: true, text: yLabel, color: c.text },
-      ticks: { color: c.text },
-      grid:  { color: c.grid },
+    scales: {
+      x: {
+        type: "linear",
+        title: { display: true, text: xLabel, color: c.text, padding: { top: 8 }, font: { size: 12 } },
+        ticks: { color: c.text, font: { size: 11 }, maxTicksLimit: 8 },
+        grid:  { color: c.grid },
+      },
+      y: {
+        title: { display: true, text: yLabel, color: c.text, padding: { bottom: 8 }, font: { size: 12 } },
+        ticks: { color: c.text, font: { size: 11 }, maxTicksLimit: 7 },
+        grid:  { color: c.grid },
+      },
     },
   };
-}
 
-function baseLegend(c) {
-  return { labels: { color: c.text, usePointStyle: true, pointStyle: "line" } };
+  // Merge extra scale options
+  if (extra && extra.y) {
+    for (var k in extra.y) { opts.scales.y[k] = extra.y[k]; }
+  }
+  if (extra && extra.x) {
+    for (var k2 in extra.x) { opts.scales.x[k2] = extra.x[k2]; }
+  }
+  if (extra && extra.aspectRatio) {
+    opts.aspectRatio = extra.aspectRatio;
+  }
+  return opts;
 }
 
 /* ------------------------------------------------------------------ */
@@ -91,12 +116,10 @@ function renderSTDP(canvas) {
   var c = getColors();
   var tau = 7, aPlus = 1.0, aMinus = 0.8;
 
-  // LTP: dt < 0 (pre before post)
   var ltp = [], ltd = [];
   for (var dt = -7; dt <= 0; dt += 0.2) {
     ltp.push({ x: dt, y: aPlus * Math.exp(-Math.abs(dt) / tau) });
   }
-  // LTD: dt > 0 (post before pre)
   for (var dt2 = 0; dt2 <= 7; dt2 += 0.2) {
     ltd.push({ x: dt2, y: -aMinus * Math.exp(-Math.abs(dt2) / tau) });
   }
@@ -105,24 +128,15 @@ function renderSTDP(canvas) {
     type: "scatter",
     data: {
       datasets: [
-        { label: "LTP (+)", data: ltp, showLine: true, borderColor: c.ltp, borderWidth: 2.5, pointRadius: 0, fill: false },
-        { label: "LTD (\u2212)", data: ltd, showLine: true, borderColor: c.ltd, borderWidth: 2.5, pointRadius: 0, fill: false },
+        { label: "LTP (strengthen)", data: ltp, showLine: true, borderColor: c.ltp, borderWidth: 2.5, pointRadius: 0, fill: false },
+        { label: "LTD (weaken)", data: ltd, showLine: true, borderColor: c.ltd, borderWidth: 2.5, pointRadius: 0, fill: false },
       ],
     },
-    options: {
-      responsive: true,
-      maintainAspectRatio: true,
-      aspectRatio: 1.6,
-      plugins: { legend: baseLegend(c) },
-      scales: Object.assign(baseScales(c, "\u0394t (days)", "\u0394w"), {
-        y: {
-          title: { display: true, text: "\u0394w", color: c.text },
-          ticks: { color: c.text },
-          grid:  { color: c.grid },
-          min: -1.1, max: 1.1,
-        },
-      }),
-    },
+    options: baseOptions(c, "\u0394t (days)", "\u0394w", {
+      aspectRatio: 1.5,
+      y: { min: -1.2, max: 1.2, ticks: { stepSize: 0.4 } },
+      x: { min: -8, max: 8 },
+    }),
   });
 }
 
@@ -134,20 +148,17 @@ function renderLIF(canvas) {
   var c = getColors();
   var tauM = 6, fires = [5, 14, 23], threshVal = 0.65;
 
-  // Build piecewise pressure curve
   var pts = [], pressure = 0.1;
   for (var t = 0; t <= 32; t += 0.3) {
-    // check for fire events
     for (var f = 0; f < fires.length; f++) {
       if (Math.abs(t - fires[f]) < 0.3) {
-        pressure += 0.5 + Math.random() * 0.2;
+        pressure += 0.55;  // deterministic jump
       }
     }
     pts.push({ x: t, y: pressure });
     pressure *= Math.exp(-0.3 / tauM);
   }
 
-  // Threshold flat line
   var thLine = [{ x: 0, y: threshVal }, { x: 32, y: threshVal }];
 
   new Chart(canvas, {
@@ -158,20 +169,10 @@ function renderLIF(canvas) {
         { label: "threshold", data: thLine, showLine: true, borderColor: c.threshold, borderWidth: 1.5, borderDash: [6, 4], pointRadius: 0, fill: false },
       ],
     },
-    options: {
-      responsive: true,
-      maintainAspectRatio: true,
-      aspectRatio: 1.8,
-      plugins: { legend: baseLegend(c) },
-      scales: Object.assign(baseScales(c, "time", "pressure"), {
-        y: {
-          title: { display: true, text: "pressure", color: c.text },
-          ticks: { color: c.text },
-          grid:  { color: c.grid },
-          min: 0,
-        },
-      }),
-    },
+    options: baseOptions(c, "time", "pressure", {
+      y: { min: 0, max: 1.0, ticks: { stepSize: 0.2 } },
+      x: { min: 0, max: 34 },
+    }),
   });
 }
 
@@ -182,14 +183,12 @@ function renderLIF(canvas) {
 function renderForgettingCurve(canvas) {
   var c = getColors();
 
-  // Without review: pure exponential decay
   var noReview = [];
   var stability0 = 8;
   for (var t = 0; t <= 60; t += 0.5) {
     noReview.push({ x: t, y: 100 * Math.exp(-t / stability0) });
   }
 
-  // With spaced review: stability grows after each review
   var reviews = [12, 28, 50];
   var stabilities = [8, 16, 32, 60];
   var spaced = [], recall = 100, stab = stabilities[0], lastReview = 0, ri = 0;
@@ -204,7 +203,6 @@ function renderForgettingCurve(canvas) {
     spaced.push({ x: t2, y: recall * Math.exp(-(t2 - lastReview) / stab) });
   }
 
-  // Review point markers
   var markers = reviews.map(function (r) { return { x: r, y: 100 }; });
 
   new Chart(canvas, {
@@ -213,22 +211,12 @@ function renderForgettingCurve(canvas) {
       datasets: [
         { label: "with spaced review", data: spaced, showLine: true, borderColor: c.review, borderWidth: 2.5, pointRadius: 0, fill: false },
         { label: "without review", data: noReview, showLine: true, borderColor: c.decay, borderWidth: 2, borderDash: [6, 4], pointRadius: 0, fill: false },
-        { label: "review", data: markers, showLine: false, borderColor: c.fire, backgroundColor: c.fire, pointRadius: 6, pointStyle: "triangle" },
+        { label: "review point", data: markers, showLine: false, borderColor: c.fire, backgroundColor: c.fire, pointRadius: 5, pointStyle: "triangle" },
       ],
     },
-    options: {
-      responsive: true,
-      maintainAspectRatio: true,
-      aspectRatio: 1.8,
-      plugins: { legend: baseLegend(c) },
-      scales: Object.assign(baseScales(c, "time (days)", "recall %"), {
-        y: {
-          title: { display: true, text: "recall %", color: c.text },
-          ticks: { color: c.text },
-          grid:  { color: c.grid },
-          min: 0, max: 105,
-        },
-      }),
-    },
+    options: baseOptions(c, "time (days)", "recall %", {
+      y: { min: 0, max: 110, ticks: { stepSize: 20 } },
+      x: { min: 0, max: 65 },
+    }),
   });
 }

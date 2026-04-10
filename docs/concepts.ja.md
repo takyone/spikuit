@@ -53,14 +53,20 @@ graph LR
 
 ```mermaid
 graph LR
-    dog(("🐕 犬")):::fired --> cat(("猫")):::primed
-    dog --> bone(("骨")):::primed
-    dog --> walk(("散歩")):::primed
-    algebra(("代数")):::inactive
+    subgraph activated [" "]
+        dog(("犬")):::fired -->|primed| cat(("猫")):::primed
+        dog -->|primed| bone(("骨")):::primed
+        dog -->|primed| walk(("散歩")):::primed
+    end
+    subgraph not_activated [" "]
+        algebra(("代数")):::inactive
+    end
 
     classDef fired fill:#E53935,color:#fff,stroke:#B71C1C
     classDef primed fill:#FFF9C4,stroke:#F9A825
-    classDef inactive fill:#F5F5F5,stroke:#BDBDBD,color:#9E9E9E
+    classDef inactive fill:#EEEEEE,stroke:#BDBDBD,color:#9E9E9E
+    style activated fill:none,stroke:#E0E0E0,stroke-dasharray:4
+    style not_activated fill:none,stroke:#E0E0E0,stroke-dasharray:4
 ```
 
 - 概念の活性化が連合リンクを通じて関連概念に広がる（Collins & Loftus, 1975）
