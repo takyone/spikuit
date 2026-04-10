@@ -1,5 +1,7 @@
 # Spikuit
 
+[English](README.md) | [日本語](docs/README.ja.md)
+
 **Synapse-inspired spaced repetition engine**
 
 FSRS × Knowledge Graph × Spreading Activation
