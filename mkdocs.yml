@@ -82,6 +82,9 @@ plugins:
             Config: 設定
             Propagation: 伝播
             How to Use: 使い方
+            Data: データ
+            Engine: エンジン
+            Learning: 学習
   - mkdocstrings:
       handlers:
         python:
@@ -105,10 +108,13 @@ nav:
   - CLI Reference: cli.md
   - API Reference:
     - reference/index.md
-    - Models: reference/models.md
-    - Circuit: reference/circuit.md
-    - Sessions: reference/sessions.md
-    - Embedder: reference/embedder.md
-    - Scaffold & Learn: reference/scaffold.md
-    - Config: reference/config.md
-    - Propagation: reference/propagation.md
+    - Data:
+      - Models: reference/models.md
+      - Config: reference/config.md
+    - Engine:
+      - Circuit: reference/circuit.md
+      - Propagation: reference/propagation.md
+      - Embedder: reference/embedder.md
+    - Learning:
+      - Scaffold & Learn: reference/scaffold.md
+      - Sessions: reference/sessions.md
