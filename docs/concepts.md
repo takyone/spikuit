@@ -157,7 +157,7 @@ Additionally identifies:
 
 ```
 spikuit/
-├── spikuit-core/          # LLM-independent engine
+├── spikuit-core/          # Pure engine
 │   ├── models.py          #   Neuron, Synapse, Spike, Plasticity, Scaffold
 │   ├── circuit.py         #   Public API: fire, retrieve, ensemble, due
 │   ├── propagation.py     #   APPNP spreading + STDP + LIF decay
@@ -170,6 +170,25 @@ spikuit/
 ├── spikuit-cli/           # spkt command (Typer)
 └── spikuit-agents/        # Agent adapters (planned)
 ```
+
+### Core layer (LLM-free)
+
+- **Circuit**: Knowledge graph engine (FSRS + NetworkX + propagation + sqlite-vec)
+- **Embedder**: Pluggable text embedding (OpenAICompat, Ollama, Null). Auto-embeds on add/update
+- **Scaffold**: ZPD-inspired support levels (FULL/GUIDED/MINIMAL/NONE) from FSRS state + graph neighbors
+- **Flashcard**: Self-grade quiz, no LLM required
+
+### Session layer (LLM-powered)
+
+- **QABotSession**: RAG chat — LLM generates answers from retrieval results (negative feedback, accept, dedup, persistent/ephemeral)
+- **LearnSession**: Knowledge curation — add neurons, discover relations, merge duplicates through dialogue
+- **TutorSession**: 1-on-1 tutoring — scaffolded teaching, hint progression, gap detection, error explanation (planned)
+
+### Quiz (evaluation tools used by Sessions)
+
+- **Flashcard** (core): Self-grade, no LLM
+- **AutoQuiz** (planned): LLM-generated questions, programmatic grading
+- 1 Quiz : N Neurons — QuizRequest has primary + supporting neurons, QuizResult has per-neuron grades
 
 ## Algorithms in Spikuit
 
@@ -207,7 +226,7 @@ pressure(t) = pressure * exp(-dt / tau_m)
 
 ## Sessions
 
-Interaction modes for the Brain (Circuit).
+LLM-powered interaction modes for the Brain (Circuit). Each session wraps the core engine with a conversational interface.
 
 ### QABotSession
 
@@ -226,6 +245,14 @@ Conversational knowledge curation:
 - `relate()`: create or strengthen synapses
 - `search()`: graph-weighted retrieval
 - `merge()`: combine duplicates (transfer synapses + content)
+
+### TutorSession (planned)
+
+1-on-1 scaffolded tutoring:
+
+- Hint progression: gradually reveal information based on Scaffold level
+- Gap detection: identify weak prerequisites via graph neighbors
+- Error explanation: diagnose misconceptions from wrong answers
 
 ### Conversational RAG Curation
 

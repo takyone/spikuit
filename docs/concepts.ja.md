@@ -157,7 +157,7 @@ Spikuitの設計は3つの分野から着想を得ています。それぞれの
 
 ```
 spikuit/
-├── spikuit-core/          # LLM非依存エンジン
+├── spikuit-core/          # 純粋エンジン
 │   ├── models.py          #   Neuron, Synapse, Spike, Plasticity, Scaffold
 │   ├── circuit.py         #   公開API: fire, retrieve, ensemble, due
 │   ├── propagation.py     #   APPNP拡散 + STDP + LIF減衰
@@ -170,6 +170,25 @@ spikuit/
 ├── spikuit-cli/           # spkt コマンド (Typer)
 └── spikuit-agents/        # エージェントアダプター（予定）
 ```
+
+### Coreレイヤー（LLM不要）
+
+- **Circuit**: ナレッジグラフエンジン（FSRS + NetworkX + 伝播 + sqlite-vec）
+- **Embedder**: 差し替え可能な埋め込み（OpenAICompat, Ollama, Null）。追加・更新時に自動埋め込み
+- **Scaffold**: ZPD着想のサポートレベル（FULL/GUIDED/MINIMAL/NONE）。FSRS状態 + グラフ近傍から算出
+- **Flashcard**: セルフグレードクイズ、LLM不要
+
+### Sessionレイヤー（LLM駆動）
+
+- **QABotSession**: RAGチャット — LLMが検索結果から回答を生成（ネガティブフィードバック、受諾、重複排除、永続/一時）
+- **LearnSession**: ナレッジキュレーション — 対話を通じてニューロン追加、関連発見、重複統合
+- **TutorSession**: 1対1チュータリング — スキャフォールド型指導、ヒント段階開示、ギャップ検出、誤答解説（予定）
+
+### Quiz（セッションが使う評価ツール）
+
+- **Flashcard**（core）: セルフグレード、LLM不要
+- **AutoQuiz**（予定）: LLM生成問題、プログラム的採点
+- 1 Quiz : N Neurons — QuizRequestにprimary + supporting neurons、QuizResultにニューロン単位のグレード
 
 ## Spikuitのアルゴリズム
 
@@ -207,7 +226,7 @@ pressure(t) = pressure * exp(-dt / tau_m)
 
 ## セッション
 
-Brain（Circuit）のインタラクションモード。
+LLM駆動のインタラクションモード。各セッションはCoreエンジンを会話型インターフェースで包む。
 
 ### QABotSession
 
@@ -226,6 +245,14 @@ Brain（Circuit）のインタラクションモード。
 - `relate()`: シナプス作成・強化
 - `search()`: グラフ重み付き検索
 - `merge()`: 重複統合（シナプス転送 + コンテンツ結合）
+
+### TutorSession（予定）
+
+1対1スキャフォールド型チュータリング:
+
+- ヒント段階開示: Scaffoldレベルに基づき情報を段階的に開示
+- ギャップ検出: グラフ近傍から弱い前提条件を特定
+- 誤答解説: 不正解から誤解を診断
 
 ### 会話型RAGキュレーション
 

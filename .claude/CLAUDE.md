@@ -96,16 +96,20 @@ All commands support `--json` for machine-readable output.
 
 ## Architecture
 
-- **Circuit**: The knowledge graph engine (FSRS + NetworkX + propagation + sqlite-vec)
+### Core layer (LLM-free)
+- **Circuit**: Knowledge graph engine (FSRS + NetworkX + propagation + sqlite-vec)
 - **Embedder**: Pluggable text embedding (OpenAICompat, Ollama, Null). Auto-embeds on add/update.
-- **Session**: Interaction modes for the Brain
-  - **QABotSession**: RAG chat with retrieval feedback (negative penalty, accept, dedup, persistent/ephemeral)
-  - **ReviewSession**: Spaced repetition (wraps Learn protocol) — planned
-  - **LearnSession**: Knowledge ingestion — planned
 - **Scaffold**: ZPD-inspired support levels (FULL/GUIDED/MINIMAL/NONE) from FSRS state + graph neighbors
-- **Learn**: Abstract protocol (select → scaffold → present → evaluate → record)
-  - **Flashcard** (core): Self-grade flashcard, no LLM required
-  - **Quiz** (skills): LLM-generated questions, per-neuron grading
+- **Flashcard**: Self-grade quiz, no LLM required
+
+### Session layer (LLM-powered)
+- **QABotSession**: RAG chat — LLM generates answers from retrieval results (negative feedback, accept, dedup, persistent/ephemeral)
+- **LearnSession**: Knowledge curation — add neurons, discover relations, merge duplicates through dialogue
+- **TutorSession**: 1-on-1 tutoring — scaffolded teaching, hint progression, gap detection, error explanation (planned)
+
+### Quiz (evaluation tools used by Sessions)
+- **Flashcard** (core): Self-grade, no LLM
+- **AutoQuiz** (planned): LLM-generated questions, programmatic grading
 - **1 Quiz : N Neurons**: QuizRequest has primary + supporting neurons, QuizResult has per-neuron grades
 
 ## Key Algorithms

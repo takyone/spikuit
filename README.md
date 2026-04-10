@@ -39,7 +39,7 @@ Traditional RAG treats the knowledge base as static — you index documents, the
 
 - **QABotSession**: Self-optimizing retrieval. Follow-up queries automatically penalize unhelpful prior results. Accepting results boosts them. The graph learns what's useful.
 - **LearnSession**: Conversational knowledge curation. Add neurons through dialogue, discover related concepts, create connections, merge duplicates. The conversation *is* the curation.
-- **ReviewSession**: Spaced repetition with scaffold-adaptive presentation. (planned)
+- **TutorSession**: 1-on-1 scaffolded tutoring with hint progression, gap detection, and error explanation. (planned)
 
 The result: a RAG system that gets better *because you use it*, not just when you re-index.
 
@@ -127,7 +127,7 @@ All commands support `--json` for machine-readable output.
 
 ```
 spikuit/
-├── spikuit-core/          # LLM-independent engine
+├── spikuit-core/          # Pure engine
 │   ├── models.py          #   Neuron, Synapse, Spike, Plasticity, Scaffold (msgspec)
 │   ├── circuit.py         #   Public API: fire, retrieve, ensemble, due
 │   ├── propagation.py     #   APPNP spreading + STDP + LIF decay
@@ -141,16 +141,24 @@ spikuit/
 └── spikuit-agents/        # Agent adapters (planned)
 ```
 
-### Core Concepts
+### Core layer (LLM-free)
 
-- **Circuit**: The knowledge graph engine — FSRS scheduling + NetworkX graph + propagation + sqlite-vec embeddings
-- **Embedder**: Pluggable text embedding (OpenAI-compat for LM Studio/Ollama/vLLM/OpenAI, Ollama native, Null for testing)
-- **Session**: Interaction modes for the Brain
-  - **QABotSession**: RAG chat with self-optimizing retrieval (negative feedback, accept, dedup, persistent/ephemeral)
-  - **LearnSession**: Conversational knowledge curation (ingest, relate, search, merge)
+- **Circuit**: Knowledge graph engine (FSRS + NetworkX + propagation + sqlite-vec)
+- **Embedder**: Pluggable text embedding (OpenAICompat, Ollama, Null). Auto-embeds on add/update
 - **Scaffold**: ZPD-inspired support levels (FULL/GUIDED/MINIMAL/NONE) from FSRS state + graph neighbors
-- **Learn**: Abstract protocol (select → scaffold → present → evaluate → record)
-  - **Flashcard**: Self-grade flashcard, no LLM required
+- **Flashcard**: Self-grade quiz, no LLM required
+
+### Session layer (LLM-powered)
+
+- **QABotSession**: RAG chat — LLM generates answers from retrieval results (negative feedback, accept, dedup, persistent/ephemeral)
+- **LearnSession**: Knowledge curation — add neurons, discover relations, merge duplicates through dialogue
+- **TutorSession**: 1-on-1 tutoring — scaffolded teaching, hint progression, gap detection, error explanation (planned)
+
+### Quiz (evaluation tools)
+
+- **Flashcard** (core): Self-grade, no LLM
+- **AutoQuiz** (planned): LLM-generated questions, programmatic grading
+- 1 Quiz : N Neurons — QuizRequest has primary + supporting neurons, QuizResult has per-neuron grades
 
 ### How `fire()` works
 
