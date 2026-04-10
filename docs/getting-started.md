@@ -115,12 +115,12 @@ spkt visualize
 
 ## Grade Scale
 
-| Grade | Meaning | FSRS Rating |
-|-------|---------|-------------|
-| `miss` | Failed recall | Again |
-| `weak` | Uncertain | Hard |
-| `fire` | Correct | Good |
-| `strong` | Perfect | Easy |
+| Grade | Meaning |
+|-------|---------|
+| `miss` | Didn't remember |
+| `weak` | Uncertain |
+| `fire` | Got it right |
+| `strong` | Perfect recall |
 
 ## Synapse Types
 

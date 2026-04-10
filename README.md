@@ -2,69 +2,111 @@
 
 [English](README.md) | [日本語](docs/README.ja.md)
 
-**Neural knowledge graph with spaced repetition**
-
-FSRS × Knowledge Graph × Spreading Activation × Conversational RAG
+**A knowledge base that gets smarter the more you use it.**
 
 ---
 
 ## What is Spikuit?
 
-Spikuit (spike + circuit, pronounced /spaɪ.kɪt/) is a knowledge system that models memory as a neural circuit. When you review a concept, activation propagates through connected knowledge — strengthening pathways you use, letting unused ones fade.
+Spikuit (spike + circuit, pronounced /spaɪ.kɪt/) is a personal knowledge system
+built around one idea: **your knowledge base should learn from you, not just store things.**
 
-It works as both a **human learning tool** and an **Agentic RAG Brain**: the same graph that helps you retain knowledge also powers intelligent retrieval for AI agents.
+Every time you search, review, or ask a question, Spikuit quietly adapts —
+boosting what's useful, connecting related ideas, and surfacing what
+you're about to forget.
 
-**Just study. The knowledge graph builds itself.**
+It works as:
 
-No manual note-taking. No link management. No folder organization.
-Review a concept, and the graph grows and adapts around what you know.
+- **A self-improving knowledge base** — search quality gets better through usage, not re-indexing
+- **A study partner** — an AI tutor that teaches, quizzes, and coaches based on what you actually know
+- **An agent's brain** — a knowledge graph that AI agents can read, write, and learn from
 
-### Vision
+### What makes it different?
 
-Spikuit brings together ideas from great existing tools:
+| | Anki | Obsidian + SRS | Spikuit |
+|---|---|---|---|
+| Scheduling | Per-card | Per-note | Per-concept, connected |
+| Knowledge structure | Flat deck | Manual links | Auto-growing graph |
+| Search | Keyword | Keyword + tags | Semantic + graph-weighted |
+| Retrieval quality | Static | Static | Improves with usage |
+| AI integration | Limited | Plugins | Built-in (agent-native) |
 
-| Inspired by | What we admire | What Spikuit explores |
-|-------------|---------------|----------------------|
-| Anki | Best-in-class scheduling | Adding concept relationships on top of scheduling |
-| Obsidian | Rich knowledge linking | Combining linking with spaced repetition |
-| DeepTutor | Context-aware tutoring | Integrating long-term retention into the loop |
+Spikuit doesn't replace these tools — it explores what becomes possible when
+you combine a knowledge graph, spaced repetition, and AI agents into one system.
 
-The goal is a system where **Learn → Retain → Retrieve** work as a single flow, complementing these tools rather than replacing them.
+## Use Cases
 
-### Conversational RAG Curation
+### "I want to remember what I learn"
 
-Spikuit introduces a novel concept: **tuning RAG quality through conversation**.
+```
+You: /tutor
 
-Traditional RAG treats the knowledge base as static — you index documents, then query them. Spikuit's knowledge graph is *alive*: every review, every accepted result, every conversation refines the structure. Sessions provide the interaction patterns:
+Tutor: You have 5 concepts due. Let's start with PageRank —
+       it's a prerequisite for APPNP which is also due.
+       [teaches the concept, then quizzes you]
 
-- **QABotSession**: Self-optimizing retrieval. Follow-up queries automatically penalize unhelpful prior results. Accepting results boosts them. The graph learns what's useful.
-- **LearnSession**: Conversational knowledge curation. Add neurons through dialogue, discover related concepts, create connections, merge duplicates. The conversation *is* the curation.
-- **TutorSession**: 1-on-1 scaffolded tutoring with hint progression, gap detection, and error explanation.
+You:   [answers]
 
-The result: a RAG system that gets better *because you use it*, not just when you re-index.
+Tutor: Good, but you mixed up the convergence condition.
+       Here's what actually happens: ...
+       [re-explains, then tries a different question angle]
+```
 
-## The Neuron Model
+Review concepts with an AI tutor that adapts to your understanding level.
+It doesn't just quiz you — it teaches weak areas, gives feedback on mistakes,
+and adjusts difficulty based on how well you know each concept.
 
-Spikuit maps directly to neuroscience:
+### "I want to build a knowledge base that's actually searchable"
 
-| Brain | Spikuit | Role |
-|-------|---------|------|
-| Neuron | `Neuron` | A unit of knowledge (Markdown) |
-| Synapse | `Synapse` | Typed, weighted connection |
-| Spike | `Spike` | A review event (action potential) |
-| Circuit | `Circuit` | The full knowledge graph |
-| Plasticity | `Plasticity` | Tunable learning parameters |
+```bash
+# Add knowledge
+spkt add "# Functor\n\nA mapping between categories." -t concept -d math
+spkt add "# Monad\n\nA monoid in endofunctors." -t concept -d math
 
-## Algorithms
+# Search — results ranked by relevance, how well you know each concept,
+# and how central it is in your knowledge graph
+spkt retrieve "category theory"
+```
 
-| Algorithm | Inspiration | What it does |
-|-----------|------------|--------------|
-| **FSRS** | Evidence-based scheduling | Per-neuron spaced repetition |
-| **APPNP** | Personalized PageRank | Review one node, activate its neighbors |
-| **STDP** | Spike-Timing-Dependent Plasticity | Connections strengthen when reviewed together |
-| **LIF** | Leaky Integrate-and-Fire | Review pressure accumulates and decays |
-| **Graph-weighted Retrieve** | Brain PageRank | Search ranked by relevance × memory strength × centrality |
-| **Semantic Search** | sqlite-vec KNN | Embedding-based similarity search with pluggable providers |
+The more you use it, the better search gets. Concepts you review often
+rank higher. Related concepts surface together. Unhelpful results
+get pushed down automatically.
+
+### "I want an AI that knows what I know"
+
+```python
+from spikuit_core import QABotSession
+
+session = QABotSession(circuit, persist=True)
+results = await session.ask("What is a functor?")
+
+# Results get better over time:
+# - Follow-up questions auto-penalize unhelpful prior results
+# - Accepting results boosts them for future queries
+# - The graph remembers what's useful across sessions
+await session.accept([results[0].neuron_id])
+```
+
+Give an AI agent a Spikuit brain, and it can search your knowledge,
+add new concepts from conversations, and track what you've mastered
+vs. what needs review.
+
+## How It Works (in brief)
+
+Spikuit organizes knowledge as a **graph** — concepts are nodes,
+relationships are edges. When you interact with the graph, three
+things happen automatically:
+
+1. **Smart scheduling** — each concept has its own review timing based on
+   how well you know it (powered by [FSRS](https://github.com/open-spaced-repetition/fsrs4anki))
+2. **Activation spreading** — reviewing one concept nudges related concepts
+   closer to their review time. Connections that are used together get stronger.
+3. **Search optimization** — results are ranked by relevance × how well you know
+   each concept × how central it is in your graph. Feedback from conversations
+   continuously improves ranking.
+
+For the technical details behind these mechanisms, see
+[Appendix: Algorithms](docs/appendix.md).
 
 ## Quick Start
 
@@ -77,132 +119,46 @@ uv sync --package spikuit-cli
 # Initialize a brain (interactive wizard)
 spkt init
 
-# Or non-interactive with flags
-spkt init -p openai-compat \
-  --base-url http://localhost:1234/v1 \
-  --model text-embedding-nomic-embed-text-v1.5
-
 # Add knowledge
 spkt add "# Functor\n\nA mapping between categories." -t concept -d math
-spkt add "# Monad\n\nA monoid in the category of endofunctors." -t concept -d math
 
-# Connect them
-spkt link <neuron-a> <neuron-b> --type requires
-
-# Review
-spkt fire <neuron-id> --grade fire
-
-# What's due?
+# Review what's due
 spkt due
-
-# Search (ranked by FSRS retrievability + graph centrality + pressure + semantic similarity)
-spkt retrieve "functor"
-
-# Interactive quiz session
 spkt quiz
 
-# Visualize
+# Search
+spkt retrieve "functor"
+
+# Visualize your knowledge graph
 spkt visualize
 ```
 
-## CLI Commands
+## Documentation
 
-| Command | Description |
-|---------|-------------|
-| `spkt init` | Initialize .spikuit/ brain |
-| `spkt config` | Show brain configuration |
-| `spkt embed-all` | Backfill embeddings for existing neurons |
-| `spkt add` | Add a Neuron |
-| `spkt fire` | Fire a Spike (review + propagation + STDP) |
-| `spkt due` | Show neurons due for review |
-| `spkt retrieve` | Graph-weighted + semantic search |
-| `spkt list` | List neurons (filter by type/domain) |
-| `spkt link` | Create a Synapse |
-| `spkt inspect` | Neuron detail: FSRS state, pressure, neighbors |
-| `spkt stats` | Circuit statistics |
-| `spkt quiz` | Interactive flashcard review session |
-| `spkt visualize` | Interactive graph visualization (HTML) |
-
-All commands support `--json` for machine-readable output and `--brain` to target a specific Brain.
+- [Getting Started](docs/getting-started.md) — install, init, first commands
+- [How to Use](docs/how-to-use.md) — use cases, agent skills, Python API
+- [Concepts](docs/concepts.md) — brain, graph model, how things connect
+- [CLI Reference](docs/cli.md) — all `spkt` commands
+- [Appendix: Algorithms](docs/appendix.md) — FSRS, graph propagation, technical details
+- [API Reference](https://takyone.github.io/spikuit/reference/) — Python API docs
 
 ## Architecture
 
 ```
-spikuit/
-├── spikuit-core/          # Pure engine
-│   ├── models.py          #   Neuron, Synapse, Spike, Plasticity, Scaffold (msgspec)
-│   ├── circuit.py         #   Public API: fire, retrieve, ensemble, due
-│   ├── propagation.py     #   APPNP spreading + STDP + LIF decay
-│   ├── db.py              #   Async SQLite + sqlite-vec persistence
-│   ├── embedder.py        #   Pluggable embedding (OpenAI-compat, Ollama, Null)
-│   ├── session.py         #   Session abstraction (QABot, Learn)
-│   ├── scaffold.py        #   ZPD-inspired scaffolding from FSRS state
-│   ├── learn.py           #   Learn protocol (Flashcard, extensible)
-│   └── config.py          #   .spikuit/ brain config and discovery
-├── spikuit-cli/           # spkt command (Typer)
-└── spikuit-agents/        # Agent adapters (planned)
+spikuit-core/     # Pure engine (no LLM dependency)
+spikuit-cli/      # spkt command
+spikuit-agents/   # Agent skills and adapters
 ```
 
-### Core layer (LLM-free)
-
-- **Circuit**: Knowledge graph engine (FSRS + NetworkX + propagation + sqlite-vec)
-- **Embedder**: Pluggable text embedding (OpenAICompat, Ollama, Null). Auto-embeds on add/update
-- **Scaffold**: ZPD-inspired support levels (FULL/GUIDED/MINIMAL/NONE) from FSRS state + graph neighbors
-- **Flashcard**: Self-grade quiz, no LLM required
-
-### Session layer (LLM-powered)
-
-- **QABotSession**: RAG chat — LLM generates answers from retrieval results (negative feedback, accept, dedup, persistent/ephemeral)
-- **LearnSession**: Knowledge curation — add neurons, discover relations, merge duplicates through dialogue
-- **TutorSession**: 1-on-1 tutoring — scaffolded teaching, hint progression, gap detection, error explanation
-
-### Quiz (evaluation tools)
-
-- **Flashcard** (core): Self-grade, no LLM
-- **AutoQuiz**: LLM-generated questions, programmatic grading
-- 1 Quiz : N Neurons — QuizRequest has primary + supporting neurons, QuizResult has per-neuron grades
-
-### How `fire()` works
-
-```
-circuit.fire(spike)
-  1. Record spike to DB
-  2. FSRS: update stability, difficulty, schedule next review
-  3. APPNP: propagate activation to neighbors (pressure deltas)
-  4. Reset source neuron pressure
-  5. STDP: update edge weights based on co-fire timing
-  6. Record last-fire timestamp for future STDP
-```
-
-### How `retrieve()` works
-
-```
-score = max(keyword_sim, semantic_sim) × (1 + retrievability + centrality + pressure + boost)
-```
-
-Semantic similarity uses sqlite-vec KNN search when an embedder is configured. Retrieval boost is accumulated through QABotSession feedback.
-
-### Tech Stack
-
-- **Models**: msgspec.Struct (type-safe, fast serialization)
-- **Storage**: SQLite (aiosqlite) + NetworkX (in-memory graph) + sqlite-vec (vector search)
-- **Scheduling**: FSRS v6
-- **Embeddings**: httpx (OpenAI-compat / Ollama providers)
-- **CLI**: Typer
-- **Visualization**: pyvis (vis.js)
-- **Language**: Python 3.11+
+The core engine is LLM-independent — `spkt` commands work standalone.
+Agent skills (`/tutor`, `/learn`, `/qabot`) add LLM-powered interactions
+on top, designed for tools like Claude Code.
 
 ## Development
 
 ```bash
-# Setup
 uv sync --package spikuit-core --extra dev
-
-# Run tests (147 tests)
 uv run --package spikuit-core pytest spikuit-core/tests/ -v
-
-# CLI dev
-uv run --package spikuit-cli spkt --help
 ```
 
 ## License

@@ -49,13 +49,13 @@ spkt fire <neuron-id> -g fire
 ### Search & Explore
 
 ```bash
-# Graph-weighted search (keyword + semantic + FSRS + centrality)
+# Graph-weighted search (keyword + semantic + memory strength + centrality)
 spkt retrieve "functor"
 
 # List by type/domain
 spkt list -t concept -d math
 
-# Inspect a neuron (FSRS state, pressure, neighbors)
+# Inspect a neuron (review state, neighbors)
 spkt inspect <neuron-id>
 
 # Circuit statistics
@@ -69,28 +69,14 @@ spkt stats
 spkt visualize -o graph.html
 ```
 
-## Conversational Sessions (Skills)
+## Agent Skills
 
-Sessions are LLM-powered interaction modes designed to run inside
-**Agent CLIs** — tools like [Claude Code](https://docs.anthropic.com/en/docs/claude-code),
-[Codex](https://openai.com/index/introducing-codex/), or similar coding agents
-that combine LLM reasoning with shell access.
+Skills are LLM-powered interaction modes designed to run inside
+**Agent CLIs** — tools like [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
+or similar coding agents that combine LLM reasoning with shell access.
 
-### Why Agent CLIs?
-
-Spikuit's core engine is LLM-independent — `spkt` commands work standalone.
-But sessions like tutoring, curation, and review are *conversational*:
-they need an LLM to generate questions, grade answers, discover relations,
-and adapt to your responses. Agent CLIs provide exactly this:
-
-- **Shell access**: the agent calls `spkt` commands or the Python API directly
-- **LLM reasoning**: the agent generates quiz questions, evaluates answers, suggests links
-- **Conversation memory**: multi-turn dialogue (hints → retry → next question)
-- **Skills/tools**: register session workflows as reusable slash commands
-
-In Claude Code, sessions are registered as **skills** — type `/tutor` and the
-agent handles the full tutoring loop. In other Agent CLIs, the same Python API
-powers equivalent integrations.
+The core engine is LLM-independent — `spkt` commands work standalone.
+Skills add conversational interactions on top: tutoring, curation, and Q&A.
 
 ```
 ┌──────────────────────────────────────────┐
@@ -102,193 +88,148 @@ powers equivalent integrations.
 │          └────────┬──────────┘            │
 │                   ▼                      │
 │        spikuit-core Python API           │
-│   (Circuit, AutoQuiz, TutorSession)      │
+│   (Circuit, Sessions, Learn)             │
 │                   │                      │
 │              spkt CLI                    │
 └──────────────────────────────────────────┘
 ```
 
-### `/tutor` — Scaffolded Tutoring
+### `/tutor` — AI Tutor
 
-1-on-1 tutoring with hint progression, gap detection, and retry logic.
+A 1-on-1 tutor that teaches, quizzes, and coaches — not just a quiz machine.
 
-**What happens:**
+The tutor decides what to do based on your state: teach a concept you're weak on,
+quiz you to check understanding, give feedback on mistakes, or answer your questions.
 
-1. Selects neurons due for review (or accepts explicit IDs)
-2. Detects weak prerequisites (gaps) and queues them first
-3. Presents questions adapted to your scaffold level
-4. On wrong answers: offers progressive hints, allows retry
-5. After max attempts: reveals the answer
-6. Records grades via `circuit.fire()` for FSRS scheduling
-
-**Example flow:**
+**Example session:**
 
 ```
 > /tutor
 
-Starting tutor session... 5 neurons queued.
-Gap detected: "Functor" is a weak prerequisite for "Monad" — reviewing first.
+Tutor: You have 5 concepts due. PageRank has low stability and is
+       a prerequisite for APPNP, so let's start there.
 
-── Functor ──
-Q: What is a Functor?
+       [LECTURE] PageRank is an algorithm that scores nodes in a graph
+       by their link structure. Imagine a random walker on the web...
+       (explains with examples, using concepts you already know)
 
-> A mapping?
+       Let me check your understanding.
 
-That's close but incomplete. Here's a hint:
-💡 Think about what it maps *between*.
+       [QUIZ] Why does PageRank need a "teleport" mechanism?
 
-> A mapping between categories that preserves structure
+You:   Because some pages have no outgoing links?
 
-✅ Correct! (Grade: FIRE)
+Tutor: [FEEDBACK] That's part of it — dangling nodes are one reason.
+       But there's also the question of convergence on disconnected
+       graphs. The teleport probability ensures the random walker
+       can always reach any page.
 
-── Monad ──
-Q: How does a Monad relate to a Functor?
-...
+       Let me try a different angle.
+
+       [QUIZ] If you remove the teleport (set it to 0), what happens
+       to the PageRank computation?
+
+You:   It might not converge?
+
+Tutor: [FEEDBACK] Exactly! Without teleport, the random walker can get
+       stuck in cycles or dead ends. ✅ fire
+       Stability: 3.2 → 8.1 days
+
+       Now let's move to APPNP, which builds on what you just learned...
 ```
+
+**What the tutor can do:**
+
+| Action | When | Example |
+|--------|------|---------|
+| Diagnose | Session start | "PageRank is weak and blocks APPNP — start there" |
+| Lecture | New or weak concept | Structured explanation using known concepts as anchors |
+| Quiz | After teaching | Varied questions (not just "what is X?") |
+| Feedback | After your answer | Explains why right/wrong, what was missing |
+| Q&A | You ask a question | Pedagogical answer using your brain's knowledge |
+| Drill | Persistent weakness | Focused repetition with varied question angles |
 
 ### `/learn` — Knowledge Curation
 
-Add neurons, discover relations, merge duplicates through dialogue.
+Add knowledge through conversation. The agent structures your input,
+discovers related concepts, and creates connections.
 
-**What happens:**
-
-1. You provide content (text, notes, ideas)
-2. `ingest()` creates a neuron and auto-discovers related concepts
-3. `relate()` creates or strengthens synapses
-4. `merge()` combines duplicate neurons (transfers synapses + content)
-5. `search()` finds related knowledge in your graph
-
-**Example flow:**
+**Example session:**
 
 ```
 > /learn
 
 What would you like to add?
 
-> The Y combinator enables recursion in lambda calculus
-  without named functions.
+> Monads in Haskell use bind (>>=) to chain computations.
+  IO and Maybe are common examples.
 
-Added neuron "Y Combinator" (n-a3f2b1).
-Found 3 related concepts:
-  - "Lambda Calculus" (0.82 similarity)
-  - "Fixed Point" (0.71 similarity)
-  - "Recursion" (0.68 similarity)
+I'll create a neuron:
 
-Link to any of these? (yes/no/select)
+── Monad ──
+# モナド (Monad)
+bind (>>=) で計算を連鎖させる。
+Examples: IO (side effects), Maybe (failure handling)
 
-> yes, all of them
+Found 2 related concepts:
+  1. Functor (0.82) → requires
+  2. Applicative (0.78) → requires
 
-Created 3 synapses (relates_to).
+Create with these connections? [Y/n]
 
-> Actually, Y Combinator *requires* Lambda Calculus
-
-Updated: Y Combinator → Lambda Calculus (requires)
+✅ Added n-abc123, linked to Functor and Applicative
 ```
 
-### `/review` — Spaced Repetition Review
+**What the agent does:**
 
-Review session using AutoQuiz — stored or LLM-generated questions.
+- Structures raw input into well-formed Markdown neurons
+- Splits multi-concept input into atomic neurons
+- Checks for duplicates before adding
+- Discovers related existing knowledge and suggests connections
+- Proposes types and domains based on existing patterns
 
-**What happens:**
+### `/qabot` — Knowledge Q&A
 
-1. Fetches neurons due for review
-2. For each neuron:
-    - Presents a stored quiz item if available (preview mode)
-    - Generates a new question via LLM if needed (generate mode)
-    - Falls back to flashcard if no LLM configured
-3. Evaluates your answer (LLM grading or self-grade)
-4. Records grade → FSRS update → propagation to neighbors
+Ask questions and get answers from your brain. Retrieval quality
+improves through the conversation.
 
-**Example flow:**
-
-```
-> /review
-
-5 neurons due for review.
-
-── 1/5: Subjonctif ──
-Q: When do you use the subjonctif in French?
-   Give two trigger categories with examples.
-
-> After expressions of doubt like "je doute que"
-  and emotions like "je suis content que"
-
-✅ Grade: FIRE
-   Stability: 8.2 → 14.1 days
-
-── 2/5: Functor ──
-Q: What must a Functor preserve?
-
-> ...
-```
-
-### `/qabot` — Self-Optimizing RAG Chat
-
-Build a Q&A bot that improves through conversation. QABotSession retrieves
-relevant neurons and learns from feedback — boosting helpful results and
-penalizing unhelpful ones.
-
-**What happens:**
-
-1. `ask()` embeds your query and retrieves matching neurons (graph-weighted scoring)
-2. If a follow-up query is similar to a previous one, prior results are
-   automatically penalized (implicit signal they were insufficient)
-3. `accept()` marks neurons as helpful — boosts their future ranking
-4. `close()` commits all feedback to the database (persistent mode)
-
-**Agent CLI integration pattern:**
-
-QABotSession handles retrieval and feedback; the agent provides LLM reasoning:
-
-```
-User question → QABotSession.ask() → retrieval results
-                                          ↓
-                              Agent passes context to LLM
-                                          ↓
-                              LLM generates answer
-                                          ↓
-                              User feedback → accept() or follow-up
-```
-
-**Example flow:**
+**Example session:**
 
 ```
 > /qabot
 
-What would you like to know?
+Ask me anything about your brain.
 
-> What is a functor?
+> How does APPNP differ from standard GCN?
 
-Found 3 relevant neurons:
-  1. "Functor" (similarity: 0.92)
-  2. "Category Theory Basics" (similarity: 0.78)
-  3. "Morphism" (similarity: 0.71)
+APPNP separates feature transformation (MLP) from propagation
+(Personalized PageRank). This lets it propagate signals deeper
+without the over-smoothing problem that limits GCN to 2-3 layers.
+The teleport probability α controls locality...
 
-A functor is a structure-preserving mapping between categories.
-It maps both objects and morphisms while preserving composition
-and identity.
+Sources: n-abc123 (APPNP), n-def456 (GCN), n-ghi789 (Over-smoothing)
 
-> That's helpful, but what about functors in programming?
+> Can you go deeper on the over-smoothing part?
 
-[Prior results auto-penalized — similar query implies they weren't enough]
-Found 3 new results:
-  1. "Functor in Haskell" (similarity: 0.88)
-  2. "fmap" (similarity: 0.75)
-  3. "Typeclass" (similarity: 0.69)
+[Previous results automatically penalized — retrieves new material]
 
-In programming, a Functor is a type class that provides fmap...
+Over-smoothing occurs when node representations converge as
+GCN layers increase. After ~5 layers, all nodes have nearly
+identical features...
 
-> Great, the Haskell explanation was exactly what I needed
+Sources: n-jkl012 (Deep GNN analysis), n-mno345 (Spectral theory)
 
-✅ Accepted "Functor in Haskell" — boosted for future retrieval.
+> Great, thanks
+
+✅ Accepted: sources boosted for future retrieval
 ```
 
-**Persistent vs Ephemeral:**
+**How feedback works:**
 
-- `persist=True` (default): feedback is committed to the database on `close()`.
-  The graph remembers which neurons were helpful across sessions.
-- `persist=False`: feedback stays in memory only. Useful for one-off queries
-  or testing without affecting future retrieval.
+- **Similar follow-up** → prior results weren't enough → they get penalized
+- **"Thanks" / acceptance** → results were helpful → they get boosted
+- **Topic change** → session resets, starts fresh
+- **Persistent mode** → feedback survives across sessions
 
 ## Python API
 
@@ -299,7 +240,6 @@ For building custom integrations, agents, or LLM adapters.
 ```python
 from spikuit_core import AutoQuiz, Circuit, QuizItem, QuizRequest, Grade
 
-# Your LLM integration
 async def my_generate(req: QuizRequest) -> QuizItem:
     prompt = f"Generate a question about neuron {req.primary}"
     # ... call your LLM ...
@@ -308,23 +248,15 @@ async def my_generate(req: QuizRequest) -> QuizItem:
 async def my_grade(item: QuizItem, response: str) -> Grade:
     prompt = f"Grade this answer: {response}\nExpected: {item.answer}"
     # ... call your LLM ...
-    return Grade.FIRE  # or MISS/WEAK/STRONG
+    return Grade.FIRE
 
-# Use it
 quiz = AutoQuiz(circuit, generate_fn=my_generate, grade_fn=my_grade)
-neuron_ids = await quiz.select(limit=5)
-for nid in neuron_ids:
-    scaffold = quiz.scaffold(nid)
-    item = await quiz.present(nid, scaffold)
-    # ... show to user, get response ...
-    grade = await quiz.evaluate(nid, item, response)
-    await quiz.record(nid, grade)
 ```
 
-### TutorSession Composition
+### TutorSession
 
 ```python
-from spikuit_core import TutorSession, AutoQuiz, Flashcard, Circuit
+from spikuit_core import TutorSession, AutoQuiz, Flashcard
 
 # With Flashcard (no LLM needed)
 tutor = TutorSession(circuit, learn=Flashcard(circuit))
@@ -333,92 +265,51 @@ tutor = TutorSession(circuit, learn=Flashcard(circuit))
 tutor = TutorSession(
     circuit,
     learn=AutoQuiz(circuit, generate_fn=my_generate, grade_fn=my_grade),
-    max_attempts=3,
 )
 
 queue = await tutor.start(limit=5)
-while True:
-    state = await tutor.teach()
-    if state is None:
-        break
-    print(state.item.question)
-    answer = input("> ")
-    state = await tutor.respond(answer)
-    if state.grade in (Grade.MISS, Grade.WEAK) and tutor.current:
-        hint = tutor.hint()
-        if hint:
-            print(f"Hint: {hint}")
-            answer = input("> ")
-            state = await tutor.respond(answer)
-
-print(tutor.stats)
-```
-
-### QuizItem Persistence
-
-```python
-from spikuit_core import QuizItem, QuizItemRole, ScaffoldLevel
-
-# Store a quiz item (M:N with neurons)
-item = QuizItem(
-    question="What is a Functor?",
-    answer="A mapping between categories that preserves structure.",
-    hints=["Think about morphisms.", "It maps both objects and arrows."],
-    grading_criteria="Must mention categories and structure preservation.",
-    scaffold_level=ScaffoldLevel.MINIMAL,
-    neuron_ids={
-        "n-abc123": QuizItemRole.PRIMARY,
-        "n-def456": QuizItemRole.SUPPORTING,
-    },
-)
-await circuit.add_quiz_item(item)
-
-# Retrieve items for a neuron
-items = await circuit.get_quiz_items("n-abc123", role=QuizItemRole.PRIMARY)
-items = await circuit.get_quiz_items("n-abc123", scaffold_level=ScaffoldLevel.NONE)
-
-# Delete
-await circuit.remove_quiz_item(item.id)
+state = await tutor.teach()
+state = await tutor.respond("my answer")
 ```
 
 ### QABotSession
 
 ```python
-from spikuit_core import Circuit, QABotSession
-from spikuit_core.config import load_config
-from spikuit_core.embedder import create_embedder
+from spikuit_core import QABotSession
 
-# Load brain and create circuit
-config = load_config()
-embedder = create_embedder(
-    config.embedder.provider,
-    base_url=config.embedder.base_url,
-    model=config.embedder.model,
-    dimension=config.embedder.dimension,
-)
-circuit = Circuit(db_path=config.db_path, embedder=embedder)
-await circuit.connect()
-
-# Create session (persistent = feedback survives across sessions)
 session = QABotSession(circuit, persist=True)
 
 # Ask — returns scored, deduplicated results
 results = await session.ask("What is a functor?")
-for r in results:
-    print(f"[{r.neuron_id}] {r.content[:100]}")
-    # r.context_ids has 1-hop neighbors for additional context
 
 # Positive feedback — boost helpful neurons
 await session.accept([results[0].neuron_id])
 
-# Follow-up — auto-penalizes prior results if query is similar
+# Follow-up — auto-penalizes prior results if similar
 results = await session.ask("functor examples in Haskell?")
 
-# Agent pattern: pass retrieval results to LLM
-context = "\n\n".join(r.content for r in results)
-# llm_answer = await my_llm(query=user_query, context=context)
+await session.close()  # commits boosts to DB
+```
 
-# Close — commits boosts to DB
+### LearnSession
+
+```python
+from spikuit_core import LearnSession, SynapseType
+
+session = LearnSession(circuit)
+
+# Add knowledge — auto-discovers related concepts
+neuron, related = await session.ingest(
+    "# Functor\n\nA mapping between categories.",
+    type="concept", domain="math",
+)
+
+# Create connections
+if related:
+    await session.relate(neuron.id, related[0].id, SynapseType.REQUIRES)
+
+# Merge duplicates
+await session.merge(["n-old1", "n-old2"], into_id="n-keep")
+
 await session.close()
-await circuit.close()
 ```

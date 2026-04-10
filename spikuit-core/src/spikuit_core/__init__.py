@@ -6,6 +6,7 @@ from .circuit import Circuit
 from .config import BrainConfig, find_spikuit_root, init_brain, load_config
 from .embedder import Embedder, NullEmbedder, OllamaEmbedder, OpenAICompatEmbedder, create_embedder
 from .models import (
+    ExamResult,
     Grade,
     Neuron,
     Plasticity,
@@ -18,6 +19,7 @@ from .models import (
     Spike,
     Synapse,
     SynapseType,
+    TutorAction,
 )
 from .learn import AutoQuiz, Flashcard, Learn
 from .scaffold import compute_scaffold
@@ -27,6 +29,7 @@ from .tutor import TutorSession, TutorState
 __all__ = [
     "AutoQuiz",
     "Circuit",
+    "ExamResult",
     "Grade",
     "Neuron",
     "Plasticity",
@@ -39,6 +42,7 @@ __all__ = [
     "Spike",
     "Synapse",
     "SynapseType",
+    "TutorAction",
     "TutorSession",
     "TutorState",
     "compute_scaffold",

@@ -1,41 +1,68 @@
 # Spikuit
 
-**Neural knowledge graph with spaced repetition**
-
-FSRS x Knowledge Graph x Spreading Activation x Conversational RAG
+**A knowledge base that gets smarter the more you use it.**
 
 ---
 
-Spikuit (spike + circuit, pronounced /spai.kit/) is a knowledge system that models memory as a neural circuit. When you review a concept, activation propagates through connected knowledge -- strengthening pathways you use, letting unused ones fade.
+Spikuit (spike + circuit, pronounced /spaɪ.kɪt/) is a personal knowledge system
+where **searching, reviewing, and asking questions all make the system better** —
+automatically.
 
-It works as both a **human learning tool** and an **Agentic RAG Brain**: the same graph that helps you retain knowledge also powers intelligent retrieval for AI agents.
+## What can you do with it?
 
-## Key Features
+### Build a knowledge graph that grows with you
 
-- **FSRS scheduling** -- evidence-based spaced repetition per neuron
-- **Graph propagation** -- review one concept, activate its neighbors (APPNP + STDP + LIF)
-- **Semantic search** -- embedding-based retrieval via sqlite-vec with pluggable providers
-- **Self-optimizing RAG** -- retrieval quality improves through conversation feedback
-- **Conversational curation** -- build and refine the knowledge graph through dialogue
-- **Scaffold-adaptive learning** -- ZPD-inspired support levels from FSRS state + graph context
-- **Project-local brains** -- `.spikuit/` config like `.git/`, with CLI discovery
+```bash
+spkt add "# Functor\n\nA mapping between categories." -t concept -d math
+spkt add "# Monad\n\nA monoid in endofunctors." -t concept -d math
+spkt link <monad-id> <functor-id> -t requires
+```
 
-## Quick Links
+Concepts connect to each other. Search results are ranked by relevance,
+how well you know each concept, and how central it is in your graph.
 
-- [Getting Started](getting-started.md) -- install, init, and first commands
-- [Concepts](concepts.md) -- neuron model, algorithms, sessions, and architecture
-- [CLI Reference](cli.md) -- all `spkt` commands
-- [API Reference](reference/index.md) -- Python API documentation
+### Study with an AI tutor
 
-## The Neuron Model
+```
+> /tutor
 
-| Brain | Spikuit | Role |
-|-------|---------|------|
-| Neuron | `Neuron` | A unit of knowledge (Markdown) |
-| Synapse | `Synapse` | Typed, weighted connection |
-| Spike | `Spike` | A review event (action potential) |
-| Circuit | `Circuit` | The full knowledge graph |
-| Plasticity | `Plasticity` | Tunable learning parameters |
+Tutor: PageRank has low stability and is a prerequisite for APPNP.
+       Let me explain PageRank first, then we'll test your understanding.
+       ...
+       [teaches, quizzes, gives feedback, re-explains weak areas]
+```
+
+Not just flashcards — a tutor that diagnoses what you need, teaches
+concepts, tests understanding, and coaches you through mistakes.
+
+### Power AI agents with your knowledge
+
+```python
+session = QABotSession(circuit, persist=True)
+results = await session.ask("What is a functor?")
+await session.accept([results[0].neuron_id])
+# → helpful results get boosted for future queries
+```
+
+Retrieval quality improves through conversation feedback — not re-indexing.
+
+## How It Works
+
+1. **Smart scheduling** — each concept has its own review timing
+   ([FSRS](https://github.com/open-spaced-repetition/fsrs4anki))
+2. **Activation spreading** — reviewing one concept nudges related
+   concepts closer to review. Connections used together get stronger.
+3. **Search optimization** — results ranked by relevance × memory
+   strength × graph centrality. Feedback improves ranking over time.
+
+## Get Started
+
+- [Getting Started](getting-started.md) — install, initialize, first commands
+- [How to Use](how-to-use.md) — use cases, agent skills, Python API
+- [Concepts](concepts.md) — brain, graph model, how things connect
+- [CLI Reference](cli.md) — all `spkt` commands
+- [Appendix](appendix.md) — algorithms and technical details
+- [API Reference](reference/index.md) — Python API documentation
 
 ## License
 

@@ -1,5 +1,5 @@
 site_name: Spikuit
-site_description: Neural knowledge graph with spaced repetition
+site_description: A knowledge base that gets smarter the more you use it
 site_url: https://takyone.github.io/spikuit/
 repo_url: https://github.com/takyone/spikuit
 repo_name: takyone/spikuit
@@ -82,6 +82,7 @@ plugins:
             Config: 設定
             Propagation: 伝播
             How to Use: 使い方
+            Appendix: 付録
             Data: データ
             Engine: エンジン
             Learning: 学習
@@ -103,9 +104,10 @@ plugins:
 nav:
   - Home: index.md
   - Getting Started: getting-started.md
-  - Concepts: concepts.md
   - How to Use: how-to-use.md
+  - Concepts: concepts.md
   - CLI Reference: cli.md
+  - Appendix: appendix.md
   - API Reference:
     - reference/index.md
     - Data:
