@@ -1,0 +1,38 @@
+[project]
+name = "spikuit"
+version = "0.0.0"
+description = "Synapse-inspired spaced repetition engine — FSRS × Knowledge Graph × Spreading Activation"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+authors = [
+    { name = "takyone", email = "takyone_dev@pm.me" },
+]
+keywords = ["spaced-repetition", "fsrs", "knowledge-graph", "spreading-activation", "learning"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Education",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Education",
+]
+
+[project.urls]
+Homepage = "https://github.com/takyone/spikuit"
+Repository = "https://github.com/takyone/spikuit"
+Issues = "https://github.com/takyone/spikuit/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.workspace]
+members = [
+    "spikuit-core",
+    "spikuit-agents",
+    "spikuit-cli",
+]
