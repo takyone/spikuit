@@ -317,6 +317,148 @@ def inspect(
 
 
 # -------------------------------------------------------------------
+# visualize
+# -------------------------------------------------------------------
+
+
+@app.command()
+def visualize(
+    output: Path = typer.Option("circuit.html", "--output", "-o", help="Output HTML path"),
+    open_browser: bool = typer.Option(True, "--open/--no-open", help="Open in browser"),
+    db: Path = typer.Option(DEFAULT_DB, "--db", help="Database path"),
+) -> None:
+    """Generate an interactive graph visualization (HTML)."""
+    from pyvis.network import Network as PyvisNetwork
+
+    async def _visualize():
+        circuit = _get_circuit(db)
+        await circuit.connect()
+        try:
+            graph = circuit.graph
+            if graph.number_of_nodes() == 0:
+                typer.echo("Circuit is empty — nothing to visualize.")
+                return
+
+            net = PyvisNetwork(
+                height="100%",
+                width="100%",
+                directed=True,
+                bgcolor="#1a1a2e",
+                font_color="#e0e0e0",
+                select_menu=True,
+                cdn_resources="in_line",
+            )
+
+            # Physics settings for nice layout
+            net.set_options("""{
+                "physics": {
+                    "forceAtlas2Based": {
+                        "gravitationalConstant": -80,
+                        "centralGravity": 0.01,
+                        "springLength": 120,
+                        "springConstant": 0.08,
+                        "damping": 0.4
+                    },
+                    "solver": "forceAtlas2Based",
+                    "stabilization": {"iterations": 150}
+                },
+                "edges": {
+                    "arrows": {"to": {"enabled": true, "scaleFactor": 0.6}},
+                    "smooth": {"type": "curvedCW", "roundness": 0.15},
+                    "color": {"inherit": false}
+                },
+                "interaction": {
+                    "hover": true,
+                    "tooltipDelay": 100,
+                    "multiselect": true
+                }
+            }""")
+
+            # Color scheme by domain/type
+            _DOMAIN_COLORS = {
+                "math": "#e74c3c",
+                "cs": "#3498db",
+                "language": "#2ecc71",
+                "philosophy": "#9b59b6",
+            }
+            _DEFAULT_NODE_COLOR = "#5dade2"
+
+            # Add nodes
+            for nid in graph.nodes:
+                node_data = graph.nodes[nid]
+                neuron = await circuit.get_neuron(nid)
+                title = _extract_title(neuron.content) if neuron else nid
+                domain = node_data.get("domain")
+                pressure = node_data.get("pressure", 0.0)
+
+                # Size based on pressure (min 15, max 40)
+                size = 15 + min(pressure, 1.0) * 25
+
+                # Color by domain
+                color = _DOMAIN_COLORS.get(domain, _DEFAULT_NODE_COLOR) if domain else _DEFAULT_NODE_COLOR
+
+                # FSRS info for tooltip
+                card = circuit.get_card(nid)
+                tooltip = f"<b>{title}</b><br>ID: {nid}"
+                if card:
+                    if card.stability is not None:
+                        tooltip += f"<br>stability: {card.stability:.1f}"
+                    if card.difficulty is not None:
+                        tooltip += f"<br>difficulty: {card.difficulty:.1f}"
+                    tooltip += f"<br>state: {card.state.name}"
+                if pressure > 0:
+                    tooltip += f"<br>pressure: {pressure:.3f}"
+
+                net.add_node(
+                    nid,
+                    label=title,
+                    title=tooltip,
+                    size=size,
+                    color=color,
+                    font={"size": 12},
+                )
+
+            # Synapse type → edge style
+            _EDGE_STYLES = {
+                "requires": {"color": "#e74c3c", "dashes": False},
+                "extends": {"color": "#f39c12", "dashes": False},
+                "contrasts": {"color": "#9b59b6", "dashes": [5, 5]},
+                "relates_to": {"color": "#95a5a6", "dashes": [2, 4]},
+            }
+
+            # Add edges
+            for u, v, data in graph.edges(data=True):
+                syn_type = data.get("type", "relates_to")
+                weight = data.get("weight", 0.5)
+                co_fires = data.get("co_fires", 0)
+                style = _EDGE_STYLES.get(syn_type, _EDGE_STYLES["relates_to"])
+
+                # Width based on weight (1-5)
+                edge_width = 1 + weight * 4
+
+                tooltip = f"{syn_type}<br>weight: {weight:.2f}<br>co_fires: {co_fires}"
+
+                net.add_edge(
+                    u, v,
+                    title=tooltip,
+                    width=edge_width,
+                    color=style["color"],
+                    dashes=style.get("dashes", False),
+                )
+
+            net.save_graph(str(output))
+            typer.echo(f"Saved to {output} ({graph.number_of_nodes()} neurons, {graph.number_of_edges()} synapses)")
+
+            if open_browser:
+                import webbrowser
+                webbrowser.open(f"file://{output.resolve()}")
+        finally:
+            await circuit.close()
+
+    _run(_visualize())
+
+
+# -------------------------------------------------------------------
 # Helpers
 # -------------------------------------------------------------------
 

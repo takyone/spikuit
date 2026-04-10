@@ -4,6 +4,7 @@ version = "0.0.0"
 description = "CLI interface for Spikuit (spkt command)"
 requires-python = ">=3.11"
 dependencies = [
+    "pyvis>=0.3.2",
     "spikuit-core",
     "typer>=0.24.1",
 ]
