@@ -17,17 +17,17 @@ Spikuit (spike + circuit, pronounced /spaɪ.kɪt/) is a spaced repetition system
 No manual note-taking. No link management. No folder organization.
 Review a concept, and the graph grows and adapts around what you know.
 
-### Motivation
+### Vision
 
-Great tools already exist — Spikuit builds on where they intersect:
+Spikuit aims to bring together ideas from great existing tools:
 
-| Tool | Strength | Spikuit adds |
-|------|----------|-------------|
-| Anki | Best-in-class scheduling | Concept relationships + graph-aware retrieval |
-| Obsidian | Rich knowledge linking | Spaced repetition + adaptive weighting |
-| DeepTutor | Context-aware tutoring | Long-term retention via FSRS |
+| Inspired by | What we admire | What Spikuit explores |
+|-------------|---------------|----------------------|
+| Anki | Best-in-class scheduling | Adding concept relationships on top of scheduling |
+| Obsidian | Rich knowledge linking | Combining linking with spaced repetition |
+| DeepTutor | Context-aware tutoring | Integrating long-term retention into the loop |
 
-Spikuit combines these ideas: **Learn → Retain → Retrieve** in a single flow.
+The goal is a system where **Learn → Retain → Retrieve** work as a single flow, complementing these tools rather than replacing them.
 
 ## The Neuron Model
 
