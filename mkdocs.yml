@@ -48,6 +48,28 @@ markdown_extensions:
 
 plugins:
   - search
+  - i18n:
+      languages:
+        - locale: en
+          name: English
+          default: true
+          build: true
+        - locale: ja
+          name: 日本語
+          build: true
+          nav_translations:
+            Home: ホーム
+            Getting Started: はじめに
+            Concepts: コンセプト
+            CLI Reference: CLIリファレンス
+            API Reference: APIリファレンス
+            Models: モデル
+            Circuit: Circuit
+            Sessions: セッション
+            Embedder: Embedder
+            Scaffold & Learn: Scaffold & Learn
+            Config: 設定
+            Propagation: 伝播
   - mkdocstrings:
       handlers:
         python:
