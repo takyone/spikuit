@@ -15,7 +15,7 @@ from fsrs import Card, Rating, Scheduler
 
 from .db import DEFAULT_DB_PATH, Database
 from .embedder import Embedder, vec_to_blob
-from .models import Grade, Neuron, Plasticity, Spike, Synapse, SynapseType
+from .models import Grade, Neuron, Plasticity, QuizItem, QuizItemRole, ScaffoldLevel, Spike, Synapse, SynapseType
 from .propagation import compute_propagation, compute_stdp, decay_all_pressure
 
 # Grade → FSRS Rating mapping
@@ -162,6 +162,51 @@ class Circuit:
         if neuron_id in self._graph:
             self._graph.remove_node(neuron_id)
         self._cards.pop(neuron_id, None)
+
+    # -- Quiz item operations -----------------------------------------------
+
+    async def add_quiz_item(self, item: QuizItem) -> QuizItem:
+        """Persist a quiz item with neuron associations.
+
+        Args:
+            item: The quiz item to store. Must have at least one neuron in
+                ``neuron_ids`` with the ``PRIMARY`` role.
+
+        Returns:
+            The persisted QuizItem (with auto-generated ID if empty).
+
+        Raises:
+            ValueError: If no primary neuron is specified.
+        """
+        if not item.primary_neuron_ids:
+            raise ValueError("QuizItem must have at least one PRIMARY neuron.")
+        await self._db.insert_quiz_item(item)
+        return item
+
+    async def get_quiz_items(
+        self,
+        neuron_id: str,
+        *,
+        role: QuizItemRole | None = None,
+        scaffold_level: ScaffoldLevel | None = None,
+    ) -> list[QuizItem]:
+        """Get quiz items associated with a neuron.
+
+        Args:
+            neuron_id: The neuron to look up.
+            role: Filter by role (primary/supporting). ``None`` = any role.
+            scaffold_level: Filter by scaffold level. ``None`` = any level.
+
+        Returns:
+            List of matching QuizItems, newest first.
+        """
+        return await self._db.get_quiz_items(
+            neuron_id, role=role, scaffold_level=scaffold_level,
+        )
+
+    async def remove_quiz_item(self, item_id: str) -> None:
+        """Delete a quiz item by ID."""
+        await self._db.delete_quiz_item(item_id)
 
     # -- Synapse operations -------------------------------------------------
 

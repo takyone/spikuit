@@ -10,7 +10,7 @@ from typing import Any
 import aiosqlite
 import sqlite_vec
 
-from .models import Grade, Neuron, Spike, Synapse, SynapseType
+from .models import Grade, Neuron, QuizItem, QuizItemRole, ScaffoldLevel, Spike, Synapse, SynapseType
 
 DEFAULT_DB_PATH: Path = Path.home() / ".spikuit" / "spikuit.db"
 
@@ -73,6 +73,25 @@ CREATE TABLE IF NOT EXISTS retrieval_boost (
     boost REAL NOT NULL DEFAULT 0.0,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS quiz_item (
+    id TEXT PRIMARY KEY,
+    question TEXT NOT NULL,
+    answer TEXT NOT NULL,
+    hints TEXT NOT NULL DEFAULT '[]',
+    grading_criteria TEXT NOT NULL DEFAULT '',
+    scaffold_level TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS quiz_item_neuron (
+    quiz_item_id TEXT NOT NULL REFERENCES quiz_item(id) ON DELETE CASCADE,
+    neuron_id TEXT NOT NULL REFERENCES neuron(id) ON DELETE CASCADE,
+    role TEXT NOT NULL,
+    PRIMARY KEY (quiz_item_id, neuron_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_quiz_item_neuron_nid ON quiz_item_neuron(neuron_id);
 """
 
 
@@ -212,6 +231,7 @@ class Database:
         )
         await self.conn.execute("DELETE FROM fsrs_state WHERE neuron_id=?", (neuron_id,))
         await self.conn.execute("DELETE FROM spike WHERE neuron_id=?", (neuron_id,))
+        await self.delete_quiz_items_for_neuron(neuron_id)
         if self._embedding_dimension is not None:
             await self.delete_embedding(neuron_id)
         await self.conn.execute("DELETE FROM neuron WHERE id=?", (neuron_id,))
@@ -442,6 +462,111 @@ class Database:
     async def get_all_retrieval_boosts(self) -> dict[str, float]:
         rows = await self.conn.execute_fetchall("SELECT neuron_id, boost FROM retrieval_boost")
         return {row["neuron_id"]: row["boost"] for row in rows}
+
+    # -- Quiz items ---------------------------------------------------------
+
+    async def insert_quiz_item(self, item: QuizItem) -> None:
+        await self.conn.execute(
+            """INSERT INTO quiz_item (id, question, answer, hints, grading_criteria,
+               scaffold_level, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                item.id,
+                item.question,
+                item.answer,
+                json.dumps(item.hints),
+                item.grading_criteria,
+                item.scaffold_level.value if item.scaffold_level else None,
+                _ts(item.created_at),
+            ),
+        )
+        for nid, role in item.neuron_ids.items():
+            await self.conn.execute(
+                "INSERT INTO quiz_item_neuron (quiz_item_id, neuron_id, role) VALUES (?, ?, ?)",
+                (item.id, nid, role.value),
+            )
+        await self.conn.commit()
+
+    async def get_quiz_items(
+        self,
+        neuron_id: str,
+        *,
+        role: QuizItemRole | None = None,
+        scaffold_level: ScaffoldLevel | None = None,
+    ) -> list[QuizItem]:
+        """Get quiz items associated with a neuron.
+
+        Args:
+            neuron_id: The neuron to look up.
+            role: Filter by role (primary/supporting). None = any role.
+            scaffold_level: Filter by scaffold level. None = any level.
+        """
+        clauses = ["qin.neuron_id = ?"]
+        params: list[str] = [neuron_id]
+        if role is not None:
+            clauses.append("qin.role = ?")
+            params.append(role.value)
+        where = " AND ".join(clauses)
+
+        rows = await self.conn.execute_fetchall(
+            f"""SELECT qi.* FROM quiz_item qi
+                JOIN quiz_item_neuron qin ON qin.quiz_item_id = qi.id
+                WHERE {where}
+                ORDER BY qi.created_at DESC""",
+            params,
+        )
+
+        items: list[QuizItem] = []
+        for row in rows:
+            item = await self._hydrate_quiz_item(row)
+            if scaffold_level is not None and item.scaffold_level != scaffold_level:
+                continue
+            items.append(item)
+        return items
+
+    async def get_quiz_item(self, item_id: str) -> QuizItem | None:
+        rows = await self.conn.execute_fetchall(
+            "SELECT * FROM quiz_item WHERE id = ?", (item_id,)
+        )
+        if not rows:
+            return None
+        return await self._hydrate_quiz_item(rows[0])
+
+    async def delete_quiz_item(self, item_id: str) -> None:
+        # quiz_item_neuron rows deleted by ON DELETE CASCADE
+        await self.conn.execute("DELETE FROM quiz_item WHERE id = ?", (item_id,))
+        await self.conn.commit()
+
+    async def delete_quiz_items_for_neuron(self, neuron_id: str) -> int:
+        """Delete all quiz items where this neuron is primary. Returns count."""
+        rows = await self.conn.execute_fetchall(
+            """SELECT quiz_item_id FROM quiz_item_neuron
+               WHERE neuron_id = ? AND role = 'primary'""",
+            (neuron_id,),
+        )
+        ids = [r["quiz_item_id"] for r in rows]
+        for qid in ids:
+            await self.conn.execute("DELETE FROM quiz_item WHERE id = ?", (qid,))
+        await self.conn.commit()
+        return len(ids)
+
+    async def _hydrate_quiz_item(self, row: aiosqlite.Row) -> QuizItem:
+        """Build a QuizItem from a quiz_item row, loading neuron associations."""
+        assoc_rows = await self.conn.execute_fetchall(
+            "SELECT neuron_id, role FROM quiz_item_neuron WHERE quiz_item_id = ?",
+            (row["id"],),
+        )
+        neuron_ids = {r["neuron_id"]: QuizItemRole(r["role"]) for r in assoc_rows}
+        return QuizItem(
+            id=row["id"],
+            question=row["question"],
+            answer=row["answer"],
+            hints=json.loads(row["hints"]),
+            grading_criteria=row["grading_criteria"],
+            scaffold_level=ScaffoldLevel(row["scaffold_level"]) if row["scaffold_level"] else None,
+            neuron_ids=neuron_ids,
+            created_at=_parse_ts(row["created_at"]),
+        )
 
     # -- Retrieve log -------------------------------------------------------
 

@@ -10,6 +10,7 @@ from .models import (
     Neuron,
     Plasticity,
     QuizItem,
+    QuizItemRole,
     QuizRequest,
     QuizResult,
     Scaffold,
@@ -18,16 +19,19 @@ from .models import (
     Synapse,
     SynapseType,
 )
-from .learn import Flashcard, Learn
+from .learn import AutoQuiz, Flashcard, Learn
 from .scaffold import compute_scaffold
 from .session import LearnSession, QABotSession, Session
+from .tutor import TutorSession, TutorState
 
 __all__ = [
+    "AutoQuiz",
     "Circuit",
     "Grade",
     "Neuron",
     "Plasticity",
     "QuizItem",
+    "QuizItemRole",
     "QuizRequest",
     "QuizResult",
     "Scaffold",
@@ -35,6 +39,8 @@ __all__ = [
     "Spike",
     "Synapse",
     "SynapseType",
+    "TutorSession",
+    "TutorState",
     "compute_scaffold",
     "Embedder",
     "Flashcard",

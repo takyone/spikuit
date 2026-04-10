@@ -6,14 +6,20 @@ implementation defines how to select, present, evaluate, and record.
 
 Scaffolding is a cross-cutting concern: every Learn type uses it to
 adapt difficulty and support level.
+
+Implementations:
+    Flashcard: Self-grade, no LLM required.
+    AutoQuiz: LLM-generated questions with programmatic or LLM grading.
 """
 
 from __future__ import annotations
 
+import random
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
-from .models import Grade, QuizItem, QuizResult, Scaffold, Spike
+from .models import Grade, QuizItem, QuizItemRole, QuizRequest, Scaffold, ScaffoldLevel, Spike
 from .scaffold import compute_scaffold
 
 if TYPE_CHECKING:
@@ -50,7 +56,7 @@ class Learn(ABC):
         ...
 
     @abstractmethod
-    def evaluate(self, neuron_id: str, item: QuizItem, response: str) -> Grade:
+    async def evaluate(self, neuron_id: str, item: QuizItem, response: str) -> Grade:
         """Evaluate a learner's response and return a grade."""
         ...
 
@@ -81,13 +87,12 @@ class Flashcard(Learn):
             return QuizItem(
                 question=f"[Neuron {neuron_id} not found]",
                 answer="",
+                neuron_ids={neuron_id: QuizItemRole.PRIMARY},
             )
 
         content = neuron.content
         title = _extract_title(content)
         body = _extract_body(content)
-
-        from .models import ScaffoldLevel
 
         if scaffold.level == ScaffoldLevel.FULL:
             question = content
@@ -113,9 +118,11 @@ class Flashcard(Learn):
             question=question,
             answer=answer,
             hints=hints,
+            neuron_ids={neuron_id: QuizItemRole.PRIMARY},
+            scaffold_level=scaffold.level,
         )
 
-    def evaluate(self, neuron_id: str, item: QuizItem, response: str) -> Grade:
+    async def evaluate(self, neuron_id: str, item: QuizItem, response: str) -> Grade:
         """Self-grading: the response IS the grade.
 
         Accepts: 'miss', 'weak', 'fire', 'strong' (or their int values 1-4).
@@ -130,7 +137,144 @@ class Flashcard(Learn):
         return grade_map.get(response, Grade.FIRE)
 
 
-# -- Helpers -----------------------------------------------------------------
+# -- Type aliases for AutoQuiz callbacks ------------------------------------
+
+GenerateFn = Callable[[QuizRequest], Awaitable[QuizItem]]
+GradeFn = Callable[[QuizItem, str], Awaitable[Grade]]
+
+
+class AutoQuiz(Learn):
+    """LLM-powered quiz — generate questions and grade answers.
+
+    Uses callback functions for LLM operations so the core engine
+    stays LLM-independent. If no callbacks are provided, falls back
+    to stored quiz items (preview mode) or Flashcard-style presentation.
+
+    Args:
+        circuit: The knowledge graph engine.
+        generate_fn: Async callback ``(QuizRequest) -> QuizItem`` for
+            generating new quiz questions via LLM.
+        grade_fn: Async callback ``(QuizItem, response) -> Grade`` for
+            grading answers via LLM. If ``None``, falls back to self-grading.
+        store: Whether to persist generated QuizItems to the database.
+    """
+
+    def __init__(
+        self,
+        circuit: Circuit,
+        *,
+        generate_fn: GenerateFn | None = None,
+        grade_fn: GradeFn | None = None,
+        store: bool = True,
+    ) -> None:
+        super().__init__(circuit)
+        self.generate_fn = generate_fn
+        self.grade_fn = grade_fn
+        self.store = store
+
+    async def select(self, *, limit: int = 10) -> list[str]:
+        """Select due neurons for quiz."""
+        return await self.circuit.due_neurons(limit=limit)
+
+    async def present(self, neuron_id: str, scaffold: Scaffold) -> QuizItem:
+        """Present a quiz item for a neuron.
+
+        Resolution order:
+        1. Stored quiz items matching this neuron + scaffold level (preview)
+        2. Stored quiz items matching this neuron at any level (preview)
+        3. LLM generation via ``generate_fn`` (generate)
+        4. Flashcard-style fallback (no LLM)
+        """
+        # 1. Try stored items at matching scaffold level
+        items = await self.circuit.get_quiz_items(
+            neuron_id, role=QuizItemRole.PRIMARY, scaffold_level=scaffold.level,
+        )
+        if items:
+            return random.choice(items)
+
+        # 2. Try stored items at any level
+        items = await self.circuit.get_quiz_items(
+            neuron_id, role=QuizItemRole.PRIMARY,
+        )
+        if items:
+            return random.choice(items)
+
+        # 3. Generate via LLM
+        if self.generate_fn is not None:
+            req = QuizRequest(
+                primary=neuron_id,
+                supporting=scaffold.context,
+                scaffold=scaffold,
+            )
+            item = await self.generate_fn(req)
+            # Ensure neuron association is set
+            if neuron_id not in item.neuron_ids:
+                item.neuron_ids[neuron_id] = QuizItemRole.PRIMARY
+            for sid in scaffold.context:
+                if sid not in item.neuron_ids:
+                    item.neuron_ids[sid] = QuizItemRole.SUPPORTING
+            if item.scaffold_level is None:
+                item.scaffold_level = scaffold.level
+            if self.store:
+                await self.circuit.add_quiz_item(item)
+            return item
+
+        # 4. Flashcard fallback
+        return await _flashcard_fallback(self.circuit, neuron_id, scaffold)
+
+    async def evaluate(self, neuron_id: str, item: QuizItem, response: str) -> Grade:
+        """Grade a response — via LLM callback or self-grade fallback."""
+        if self.grade_fn is not None:
+            return await self.grade_fn(item, response)
+        # Self-grade fallback
+        response = response.strip().lower()
+        grade_map = {
+            "miss": Grade.MISS, "1": Grade.MISS,
+            "weak": Grade.WEAK, "2": Grade.WEAK,
+            "fire": Grade.FIRE, "3": Grade.FIRE,
+            "strong": Grade.STRONG, "4": Grade.STRONG,
+        }
+        return grade_map.get(response, Grade.FIRE)
+
+
+# -- Helpers ----------------------------------------------------------------
+
+
+async def _flashcard_fallback(
+    circuit: Circuit, neuron_id: str, scaffold: Scaffold,
+) -> QuizItem:
+    """Generate a Flashcard-style QuizItem as fallback."""
+    neuron = await circuit.get_neuron(neuron_id)
+    if neuron is None:
+        return QuizItem(
+            question=f"[Neuron {neuron_id} not found]",
+            answer="",
+            neuron_ids={neuron_id: QuizItemRole.PRIMARY},
+        )
+
+    content = neuron.content
+    title = _extract_title(content)
+    body = _extract_body(content)
+
+    if scaffold.level == ScaffoldLevel.FULL:
+        question, answer = content, ""
+    elif scaffold.level == ScaffoldLevel.GUIDED:
+        first_para = body.split("\n\n")[0] if body else ""
+        question = f"# {title}\n\n{first_para}" if title else first_para
+        answer = body
+    elif scaffold.level == ScaffoldLevel.MINIMAL:
+        question = f"# {title}" if title else neuron_id
+        answer = body
+    else:
+        question = title or neuron_id
+        answer = content
+
+    return QuizItem(
+        question=question,
+        answer=answer,
+        neuron_ids={neuron_id: QuizItemRole.PRIMARY},
+        scaffold_level=scaffold.level,
+    )
 
 
 def _extract_title(content: str) -> str:

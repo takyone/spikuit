@@ -168,28 +168,31 @@ async def test_present_includes_scaffold_hints(circuit):
 # -- Flashcard.evaluate -----------------------------------------------------
 
 
-def test_evaluate_string_grades():
+@pytest.mark.asyncio
+async def test_evaluate_string_grades():
     """evaluate() parses string grade names."""
     fc = Flashcard.__new__(Flashcard)
-    assert fc.evaluate("n1", None, "miss") == Grade.MISS
-    assert fc.evaluate("n1", None, "weak") == Grade.WEAK
-    assert fc.evaluate("n1", None, "fire") == Grade.FIRE
-    assert fc.evaluate("n1", None, "strong") == Grade.STRONG
+    assert await fc.evaluate("n1", None, "miss") == Grade.MISS
+    assert await fc.evaluate("n1", None, "weak") == Grade.WEAK
+    assert await fc.evaluate("n1", None, "fire") == Grade.FIRE
+    assert await fc.evaluate("n1", None, "strong") == Grade.STRONG
 
 
-def test_evaluate_numeric_grades():
+@pytest.mark.asyncio
+async def test_evaluate_numeric_grades():
     """evaluate() parses numeric grade values."""
     fc = Flashcard.__new__(Flashcard)
-    assert fc.evaluate("n1", None, "1") == Grade.MISS
-    assert fc.evaluate("n1", None, "2") == Grade.WEAK
-    assert fc.evaluate("n1", None, "3") == Grade.FIRE
-    assert fc.evaluate("n1", None, "4") == Grade.STRONG
+    assert await fc.evaluate("n1", None, "1") == Grade.MISS
+    assert await fc.evaluate("n1", None, "2") == Grade.WEAK
+    assert await fc.evaluate("n1", None, "3") == Grade.FIRE
+    assert await fc.evaluate("n1", None, "4") == Grade.STRONG
 
 
-def test_evaluate_default_grade():
+@pytest.mark.asyncio
+async def test_evaluate_default_grade():
     """Unknown input defaults to FIRE."""
     fc = Flashcard.__new__(Flashcard)
-    assert fc.evaluate("n1", None, "whatever") == Grade.FIRE
+    assert await fc.evaluate("n1", None, "whatever") == Grade.FIRE
 
 
 # -- Flashcard.record -------------------------------------------------------
