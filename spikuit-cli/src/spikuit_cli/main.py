@@ -340,7 +340,7 @@ def visualize(
                 return
 
             net = PyvisNetwork(
-                height="100%",
+                height="100vh",
                 width="100%",
                 directed=True,
                 bgcolor="#1a1a2e",
@@ -447,6 +447,13 @@ def visualize(
                 )
 
             net.save_graph(str(output))
+
+            # Inject full-viewport CSS (pyvis doesn't set html/body height)
+            html = output.read_text()
+            css_inject = "<style>html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }</style>"
+            html = html.replace("<head>", f"<head>{css_inject}", 1)
+            output.write_text(html)
+
             typer.echo(f"Saved to {output} ({graph.number_of_nodes()} neurons, {graph.number_of_edges()} synapses)")
 
             if open_browser:
