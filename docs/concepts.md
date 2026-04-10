@@ -8,11 +8,7 @@ Spikuit draws from three fields. This section is a quick primer on each.
 
 #### Neurons and Spikes
 
-```
-  input → [accumulate] → threshold? → fire! → propagate to neighbors
-                ↑                                       |
-                └──── leak (decay over time) ←──────────┘
-```
+![Neuron firing flow](images/neuron-flow.svg)
 
 - Biological neurons communicate through discrete electrical pulses (action potentials)
 - A neuron accumulates input, fires when it crosses a threshold, then resets
@@ -30,20 +26,7 @@ Spikuit draws from three fields. This section is a quick primer on each.
 
 Refines Hebb's rule with temporal direction:
 
-```
-  Strength
-  change
-    ^
-    |    LTP (+)
-    |   /
-    |  /
-    | /
-----+--------→ time difference (dt)
-    |\
-    | \
-    |  \  LTD (-)
-    |   \
-```
+![STDP curve](images/stdp.svg)
 
 - Pre fires before post (causal) → connection strengthens (LTP)
 - Post fires before pre (reverse) → connection weakens (LTD)
@@ -52,23 +35,25 @@ Refines Hebb's rule with temporal direction:
 
 #### LIF (Leaky Integrate-and-Fire)
 
-```
-  pressure
-    ^
-    |      ╱╲        ╱╲ ← neighbor reviews push up
-    |     ╱  ╲      ╱  ╲
-    |    ╱    ╲    ╱    ╲
-    |───╱──────╲──╱──────╲──── threshold
-    |  ╱        ╲╱        ╲
-    | ╱    decay  ↘         ╲
-    +──────────────────────────→ time
-```
+![LIF pressure model](images/lif.svg)
 
 - Neurons accumulate input (integration) and gradually lose charge (leak)
 - High pressure = the system is telling you this concept needs review
 - In Spikuit: neighbor reviews push pressure up, time decays it exponentially
 
 #### Spreading Activation
+
+```mermaid
+graph LR
+    dog(("🐕 dog")):::fired --> cat(("cat")):::primed
+    dog --> bone(("bone")):::primed
+    dog --> walk(("walk")):::primed
+    algebra(("algebra")):::inactive
+
+    classDef fired fill:#E53935,color:#fff,stroke:#B71C1C
+    classDef primed fill:#FFF9C4,stroke:#F9A825
+    classDef inactive fill:#F5F5F5,stroke:#BDBDBD,color:#9E9E9E
+```
 
 - Activating a concept in memory primes related concepts (Collins & Loftus, 1975)
 - "dog" primes "cat" and "bone", not "algebra"
@@ -78,19 +63,7 @@ Refines Hebb's rule with temporal direction:
 
 #### Forgetting Curve and Spaced Repetition
 
-```
-  recall %
-  100 ┤ ╲
-      │   ╲    review    review
-   80 ┤    ╲   ↓         ↓
-      │     ╲──╱╲────────╱╲──────── getting flatter
-   60 ┤      ╲╱  ╲      ╱  ╲
-      │            ╲    ╱    ╲
-   40 ┤             ╲──╱      ╲───
-      │
-   20 ┤  ← without review
-      └──────────────────────────→ time
-```
+![Forgetting curve with spaced repetition](images/forgetting-curve.svg)
 
 - Memory decays exponentially over time (Ebbinghaus, 1885)
 - Each successful retrieval strengthens the trace and slows future decay
@@ -105,19 +78,7 @@ Refines Hebb's rule with temporal direction:
 
 #### ZPD and Scaffolding
 
-```
-  ┌──────────────────────────────┐
-  │    Can't do (yet)            │
-  │  ┌────────────────────────┐  │
-  │  │   ZPD: can do with     │  │
-  │  │   scaffolding support  │  │
-  │  │  ┌──────────────────┐  │  │
-  │  │  │  Can do alone    │  │  │
-  │  │  │  (mastered)      │  │  │
-  │  │  └──────────────────┘  │  │
-  │  └────────────────────────┘  │
-  └──────────────────────────────┘
-```
+![Zone of Proximal Development](images/zpd.svg)
 
 - ZPD (Vygotsky, 1978): the gap between what you can do alone vs. with guidance
 - Scaffolding (Wood, Bruner & Ross, 1976): temporary support, gradually removed as competence grows
