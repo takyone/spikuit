@@ -14,10 +14,18 @@ Ingest new knowledge, discover connections, and curate the graph.
    - A specific concept/term to define
    - A file or URL to extract knowledge from
 2. **Structure the content**: Convert raw input into well-formed Markdown neurons
-3. **Ingest neurons**: `spkt add "<content>" -t <type> -d <domain> --json`
+3. **Ingest neurons**: `spkt add "<content>" -t <type> -d <domain> --source-url "<url>" --json`
 4. **Discover relations**: `spkt retrieve "<query>" --json` to find related neurons
 5. **Create synapses**: `spkt link <new> <related> -t <type>` for each connection
 6. **Confirm with user**: Show what was added and linked, ask for corrections
+
+### Source Ingestion from URL/File
+
+For bulk content from a URL or file:
+1. **Fetch**: `spkt learn "<url-or-path>" -d <domain> --json` — creates Source, returns content
+2. **Chunk**: Split the returned content into atomic concepts
+3. **Add each chunk**: `spkt add "<chunk>" --source-url "<url>" --json` — auto-attaches Source
+4. **Re-detect communities**: `spkt communities --detect` after major ingestion
 
 ## Content Structuring
 
@@ -139,9 +147,12 @@ Use `--brain <path>` with all `spkt` commands.
 ## Commands Used
 
 ```bash
-spkt add "<content>" -t <type> -d <domain> --json  # Add neuron
-spkt retrieve "<query>" --json                      # Find related
-spkt link <a> <b> -t <type>                         # Create synapse
-spkt list --json                                    # List existing neurons
-spkt inspect <id> --json                            # View neuron details
+spkt add "<content>" -t <type> -d <domain> --json                   # Add neuron
+spkt add "<content>" -t <type> --source-url "<url>" --json          # Add with source
+spkt learn "<url-or-path>" -d <domain> --json                       # Fetch + create Source
+spkt retrieve "<query>" --json                                      # Find related
+spkt link <a> <b> -t <type>                                         # Create synapse
+spkt list --json                                                    # List existing neurons
+spkt inspect <id> --json                                            # Neuron detail + sources
+spkt communities --detect --json                                    # Re-detect communities
 ```

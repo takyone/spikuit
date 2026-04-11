@@ -24,17 +24,21 @@ Stats: !`spkt stats --json 2>/dev/null || echo '{}'`
 ## Answer Guidelines
 
 - **Synthesize**: combine information from multiple neurons
-- **Cite sources**: reference neuron IDs so the user can inspect them
+- **Cite with provenance**: use Source metadata from `spkt inspect --json` for proper citation
 - **Acknowledge gaps**: if retrieval doesn't cover the question, say so
 - **Match language**: answer in the same language as the question
 
-### Format
+### Citation Format
+
+`spkt inspect <id> --json` returns a `sources` array with `id`, `url`, and `title`.
+When sources are available, cite them with URL. When no sources are attached, cite by neuron ID.
+
 ```
 [Answer synthesized from retrieved neurons]
 
 Sources:
-- n-abc123: Neuron title
-- n-def456: Neuron title
+- [Source Title](https://example.com/paper.pdf) (via n-abc123)
+- n-def456: Neuron title (no source URL)
 ```
 
 ## Context Expansion
@@ -54,5 +58,6 @@ For each retrieved neuron, also check its neighbors for richer context:
 
 ```bash
 spkt retrieve "<query>" --json
-spkt inspect <id> --json
+spkt inspect <id> --json            # includes sources[] and community_id
+spkt communities --json             # view community structure
 ```

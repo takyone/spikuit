@@ -118,17 +118,24 @@ pip install spikuit
 # Configures embeddings and installs Agent CLI skills (/tutor, /learn, /qabot)
 spkt init
 
-# Add knowledge
+# Add knowledge (with optional source for citation)
 spkt add "# Functor\n\nA mapping between categories." -t concept -d math
+spkt add "Content" --source-url "https://paper.com" --source-title "A Paper"
+
+# Ingest from URL or file
+spkt learn "https://example.com/article" -d cs --json
 
 # Review what's due
 spkt due
 spkt quiz
 
-# Search
+# Search (community-boosted)
 spkt retrieve "functor"
 
-# Visualize your knowledge graph
+# Detect and view knowledge communities
+spkt communities --detect
+
+# Visualize your knowledge graph (community-colored)
 spkt visualize
 ```
 

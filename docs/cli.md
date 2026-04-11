@@ -69,14 +69,16 @@ Add a new Neuron to the circuit.
 
 ```bash
 spkt add "# Functor\n\nA mapping between categories." -t concept -d math
-spkt add "Content here" --type fact --domain physics --source "textbook p.42"
+spkt add "Content here" --type fact --domain physics
+spkt add "Content" -t concept --source-url "https://example.com/paper.pdf" --source-title "A Paper"
 ```
 
 | Option | Description |
 |--------|-------------|
 | `-t`, `--type` | Neuron type (e.g. `concept`, `fact`, `procedure`) |
 | `-d`, `--domain` | Knowledge domain (e.g. `math`, `french`) |
-| `-s`, `--source` | Origin URL or reference |
+| `--source-url` | Source URL for citation tracking |
+| `--source-title` | Source title (used with `--source-url`) |
 
 ### `spkt list`
 
@@ -91,11 +93,11 @@ spkt list --limit 50
 ### `spkt inspect`
 
 Show detailed information about a neuron: content, FSRS state,
-pressure, and connected synapses.
+pressure, sources, community, and connected synapses.
 
 ```bash
 spkt inspect <neuron-id>
-spkt inspect <neuron-id> --json
+spkt inspect <neuron-id> --json    # includes sources[] and community_id
 ```
 
 ### `spkt link`
@@ -150,6 +152,37 @@ scaffold-adaptive content and accepts self-grading.
 ```bash
 spkt quiz
 spkt quiz --limit 10
+```
+
+## Source Ingestion
+
+### `spkt learn`
+
+Ingest a source file or URL for agent-driven chunking.
+Creates a Source record and outputs the content for processing.
+
+```bash
+spkt learn "https://example.com/article" -d cs --json
+spkt learn ./notes.md -d math --json
+```
+
+| Option | Description |
+|--------|-------------|
+| `-d`, `--domain` | Domain tag for ingested content |
+| `--title` | Override source title |
+
+## Communities
+
+### `spkt communities`
+
+Show or detect communities (clusters) in the knowledge graph
+using the Louvain algorithm.
+
+```bash
+spkt communities                   # Show current communities
+spkt communities --detect          # Force re-detection
+spkt communities --detect -r 2.0   # Higher resolution = more communities
+spkt communities --json            # Machine-readable output
 ```
 
 ## Search

@@ -31,6 +31,19 @@ For each piece of knowledge:
 spkt add "<markdown content>" --type <type> --domain <domain> --json
 ```
 
+If the knowledge comes from a specific source (URL, paper, etc.), attach it:
+
+```bash
+spkt add "<content>" --type <type> --domain <domain> --source-url "<url>" --source-title "<title>" --json
+```
+
+For bulk ingestion from a URL or file:
+
+```bash
+spkt learn "<url-or-path>" -d <domain> --json   # fetches content + creates Source
+# then chunk the returned content into neurons with --source-url
+```
+
 Note: Use `\n` for newlines in the content string.
 
 Save the returned neuron IDs.

@@ -28,12 +28,15 @@ When generating an answer from retrieved neurons:
 
 ### Answer Format
 
+Use source URLs from `spkt inspect --json` (the `sources` array) for proper citation.
+When sources are available, cite with URL. Otherwise, cite by neuron ID.
+
 ```
 [Answer synthesized from retrieved neurons]
 
 Sources:
-- n-abc123: Neuron title or first line
-- n-def456: Neuron title or first line
+- [Source Title](https://example.com/paper.pdf) (via n-abc123)
+- n-def456: Neuron title (no source URL)
 ```
 
 ## Feedback Loop
@@ -139,5 +142,6 @@ Use `--brain <path>` with all `spkt` commands.
 
 ```bash
 spkt retrieve "<query>" --brain <path> --json  # Semantic search
-spkt inspect <id> --brain <path> --json        # Neuron detail + neighbors
+spkt inspect <id> --brain <path> --json        # Neuron detail + neighbors + sources
+spkt communities --json                        # View community structure
 ```

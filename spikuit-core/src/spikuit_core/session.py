@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from .embedder import Embedder, vec_to_blob
-from .models import Neuron, Synapse, SynapseType
+from .models import Neuron, Source, Synapse, SynapseType
 
 if TYPE_CHECKING:
     from .circuit import Circuit
@@ -33,12 +33,14 @@ class RetrievalResult:
         score: Relevance score (higher = better).
         content: Neuron content (Markdown).
         context_ids: IDs of ensemble neighbors (N-hop context).
+        sources: Source records attached to this neuron (for citation).
     """
 
     neuron_id: str
     score: float
     content: str
     context_ids: list[str] = field(default_factory=list)
+    sources: list[Source] = field(default_factory=list)
 
 
 class Session(ABC):
@@ -153,11 +155,13 @@ class QABotSession(Session):
         turn_ids: set[str] = set()
         for n in candidates[:limit]:
             context_ids = self.circuit.ensemble(n.id, hops=1)
+            sources = await self.circuit.get_sources_for_neuron(n.id)
             results.append(RetrievalResult(
                 neuron_id=n.id,
                 score=0.0,  # score is internal to retrieve()
                 content=n.content,
                 context_ids=context_ids,
+                sources=sources,
             ))
             turn_ids.add(n.id)
 
@@ -286,6 +290,7 @@ class LearnSession(Session):
         type: str | None = None,
         domain: str | None = None,
         source: str | None = None,
+        source_meta: Source | None = None,
         id: str | None = None,
     ) -> tuple[Neuron, list[Neuron]]:
         """Add a neuron and discover related existing knowledge.
@@ -293,11 +298,15 @@ class LearnSession(Session):
         Creates the neuron, auto-embeds it (if an embedder is configured),
         and searches for related neurons via graph-weighted retrieval.
 
+        When ``source_meta`` is provided, the source is deduplicated by URL,
+        created if new, and attached to the new neuron.
+
         Args:
             content: Markdown content for the new neuron.
             type: Category tag (e.g. ``"concept"``).
             domain: Knowledge domain (e.g. ``"math"``).
-            source: Origin URL or reference.
+            source: Origin URL or reference (legacy string field).
+            source_meta: Structured Source for citation tracking.
             id: Custom neuron ID (auto-generated if ``None``).
 
         Returns:
@@ -317,6 +326,18 @@ class LearnSession(Session):
         neuron = Neuron.create(content, **kwargs)
         await self.circuit.add_neuron(neuron)
         self._added.append(neuron.id)
+
+        # Attach structured source if provided
+        if source_meta is not None:
+            # Dedup by URL
+            existing = None
+            if source_meta.url:
+                existing = await self.circuit.find_source_by_url(source_meta.url)
+            if existing is not None:
+                await self.circuit.attach_source(neuron.id, existing.id)
+            else:
+                await self.circuit.add_source(source_meta)
+                await self.circuit.attach_source(neuron.id, source_meta.id)
 
         # Auto-discover related neurons
         related: list[Neuron] = []

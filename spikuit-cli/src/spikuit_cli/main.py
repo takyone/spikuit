@@ -10,7 +10,7 @@ from typing import Optional
 
 import typer
 
-from spikuit_core import Circuit, Flashcard, Grade, Neuron, Plasticity, Spike, SynapseType
+from spikuit_core import Circuit, Flashcard, Grade, Neuron, Plasticity, Source, Spike, SynapseType
 from spikuit_core.config import BrainConfig, find_spikuit_root, init_brain, load_config
 from spikuit_core.embedder import create_embedder
 
@@ -268,6 +268,8 @@ def add(
     content: str = typer.Argument(..., help="Markdown content for the neuron"),
     type: Optional[str] = typer.Option(None, "--type", "-t", help="Neuron type"),
     domain: Optional[str] = typer.Option(None, "--domain", "-d", help="Domain tag"),
+    source_url: Optional[str] = typer.Option(None, "--source-url", help="Source URL for citation"),
+    source_title: Optional[str] = typer.Option(None, "--source-title", help="Source title"),
     as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
     brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
 ) -> None:
@@ -280,10 +282,30 @@ def add(
             real_content = content.encode().decode("unicode_escape")
             neuron = Neuron.create(real_content, type=type, domain=domain)
             await circuit.add_neuron(neuron)
+
+            # Attach source if URL provided
+            source_attached = None
+            if source_url:
+                existing = await circuit.find_source_by_url(source_url)
+                if existing:
+                    await circuit.attach_source(neuron.id, existing.id)
+                    source_attached = existing
+                else:
+                    src = Source(url=source_url, title=source_title)
+                    await circuit.add_source(src)
+                    await circuit.attach_source(neuron.id, src.id)
+                    source_attached = src
+
             if as_json:
-                _out(_neuron_dict(neuron, circuit), use_json=True)
+                d = _neuron_dict(neuron, circuit)
+                if source_attached:
+                    d["source_id"] = source_attached.id
+                    d["source_url"] = source_attached.url
+                _out(d, use_json=True)
             else:
                 typer.echo(f"Added neuron {neuron.id}")
+                if source_attached:
+                    typer.echo(f"  source: {source_attached.id} ({source_attached.url})")
         finally:
             await circuit.close()
 
@@ -526,14 +548,86 @@ def stats(
             if as_json:
                 _out(s, use_json=True)
             else:
-                typer.echo(f"Neurons:   {s['neurons']}")
-                typer.echo(f"Synapses:  {s['synapses']}")
-                typer.echo(f"Density:   {s['graph_density']:.4f}")
-                typer.echo(f"Cards:     {s['cards_loaded']}")
+                typer.echo(f"Neurons:      {s['neurons']}")
+                typer.echo(f"Synapses:     {s['synapses']}")
+                typer.echo(f"Density:      {s['graph_density']:.4f}")
+                typer.echo(f"Cards:        {s['cards_loaded']}")
+                typer.echo(f"Communities:  {s['communities']}")
         finally:
             await circuit.close()
 
     _run(_stats())
+
+
+# -------------------------------------------------------------------
+# communities
+# -------------------------------------------------------------------
+
+
+@app.command()
+def communities(
+    detect: bool = typer.Option(False, "--detect", help="Force re-detection of communities"),
+    resolution: float = typer.Option(1.0, "--resolution", "-r", help="Louvain resolution parameter"),
+    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
+    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
+) -> None:
+    """Show or detect communities in the knowledge graph."""
+
+    async def _communities():
+        circuit = _get_circuit(brain)
+        await circuit.connect()
+        try:
+            if detect:
+                result = await circuit.detect_communities(resolution=resolution)
+                if as_json:
+                    # Convert to JSON-friendly format
+                    _out({
+                        "detected": True,
+                        "count": len(result),
+                        "communities": {str(k): v for k, v in result.items()},
+                    }, use_json=True)
+                else:
+                    if not result:
+                        typer.echo("No communities detected (empty graph).")
+                        return
+                    typer.echo(f"Detected {len(result)} community(ies):")
+                    for cid, members in sorted(result.items()):
+                        labels = []
+                        for nid in members[:5]:
+                            n = await circuit.get_neuron(nid)
+                            labels.append(_extract_title(n.content) if n else nid)
+                        suffix = f" (+{len(members) - 5} more)" if len(members) > 5 else ""
+                        typer.echo(f"  [{cid}] {len(members)} neurons: {', '.join(labels)}{suffix}")
+            else:
+                cmap = circuit.community_map()
+                if as_json:
+                    # Group by community
+                    groups: dict[int, list[str]] = {}
+                    for nid, cid in cmap.items():
+                        groups.setdefault(cid, []).append(nid)
+                    _out({
+                        "count": len(groups),
+                        "communities": {str(k): v for k, v in groups.items()},
+                    }, use_json=True)
+                else:
+                    if not cmap:
+                        typer.echo("No communities assigned yet. Run: spkt communities --detect")
+                        return
+                    groups = {}
+                    for nid, cid in cmap.items():
+                        groups.setdefault(cid, []).append(nid)
+                    typer.echo(f"{len(groups)} community(ies):")
+                    for cid, members in sorted(groups.items()):
+                        labels = []
+                        for nid in members[:5]:
+                            n = await circuit.get_neuron(nid)
+                            labels.append(_extract_title(n.content) if n else nid)
+                        suffix = f" (+{len(members) - 5} more)" if len(members) > 5 else ""
+                        typer.echo(f"  [{cid}] {len(members)} neurons: {', '.join(labels)}{suffix}")
+        finally:
+            await circuit.close()
+
+    _run(_communities())
 
 
 # -------------------------------------------------------------------
@@ -558,10 +652,18 @@ def inspect(
                 typer.echo(f"Neuron {neuron_id} not found", err=True)
                 raise typer.Exit(1)
 
+            sources = await circuit.get_sources_for_neuron(neuron_id)
+            community_id = circuit.get_community(neuron_id)
+
             if as_json:
                 d = _neuron_dict(neuron, circuit)
                 d["neighbors_out"] = circuit.neighbors(neuron_id)
                 d["neighbors_in"] = circuit.predecessors(neuron_id)
+                d["community_id"] = community_id
+                d["sources"] = [
+                    {"id": s.id, "url": s.url, "title": s.title}
+                    for s in sources
+                ]
                 _out(d, use_json=True)
             else:
                 typer.echo(f"ID:       {neuron.id}")
@@ -577,6 +679,15 @@ def inspect(
 
                 pressure = circuit.get_pressure(neuron_id)
                 typer.echo(f"Pressure: {pressure:.4f}")
+
+                if community_id is not None:
+                    typer.echo(f"Community: {community_id}")
+
+                if sources:
+                    typer.echo(f"Sources ({len(sources)}):")
+                    for s in sources:
+                        label = s.title or s.url or s.id
+                        typer.echo(f"  {s.id}  {label}")
 
                 neighbors = circuit.neighbors(neuron_id)
                 preds = circuit.predecessors(neuron_id)
@@ -694,6 +805,80 @@ def quiz(
 
 
 # -------------------------------------------------------------------
+# learn
+# -------------------------------------------------------------------
+
+
+@app.command(name="learn")
+def learn_cmd(
+    path_or_url: str = typer.Argument(..., help="File path or URL to ingest"),
+    domain: Optional[str] = typer.Option(None, "--domain", "-d", help="Domain tag"),
+    title: Optional[str] = typer.Option(None, "--title", help="Source title override"),
+    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
+    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
+) -> None:
+    """Ingest a source file or URL for agent-driven chunking.
+
+    Reads the content, creates a Source record, and outputs the raw
+    content for the agent layer to split into neurons.
+    """
+
+    async def _learn():
+        circuit = _get_circuit(brain)
+        await circuit.connect()
+        try:
+            # Determine if URL or local file
+            is_url = path_or_url.startswith(("http://", "https://"))
+
+            if is_url:
+                import urllib.request
+                try:
+                    with urllib.request.urlopen(path_or_url, timeout=30) as resp:
+                        raw = resp.read().decode("utf-8", errors="replace")
+                except Exception as e:
+                    typer.echo(f"Failed to fetch URL: {e}", err=True)
+                    raise typer.Exit(1)
+                source_url = path_or_url
+            else:
+                p = Path(path_or_url)
+                if not p.exists():
+                    typer.echo(f"File not found: {path_or_url}", err=True)
+                    raise typer.Exit(1)
+                raw = p.read_text(encoding="utf-8")
+                source_url = f"file://{p.resolve()}"
+
+            # Create or reuse Source
+            existing = await circuit.find_source_by_url(source_url)
+            if existing:
+                src = existing
+            else:
+                src = Source(
+                    url=source_url,
+                    title=title or (Path(path_or_url).stem if not is_url else path_or_url[:80]),
+                )
+                await circuit.add_source(src)
+
+            if as_json:
+                _out({
+                    "source_id": src.id,
+                    "source_url": src.url,
+                    "source_title": src.title,
+                    "domain": domain,
+                    "content_length": len(raw),
+                    "content": raw,
+                }, use_json=True)
+            else:
+                typer.echo(f"Source: {src.id} ({src.url})")
+                typer.echo(f"Content: {len(raw)} chars")
+                typer.echo(f"Domain: {domain or '-'}")
+                typer.echo("\nUse the /learn agent skill to chunk this content into neurons.")
+        finally:
+            await circuit.close()
+
+    _run(_learn())
+
+
+# -------------------------------------------------------------------
 # visualize
 # -------------------------------------------------------------------
 
@@ -756,7 +941,22 @@ def visualize(
                 "language": "#2ecc71",
                 "philosophy": "#9b59b6",
             }
+            _COMMUNITY_PALETTE = [
+                "#e74c3c", "#3498db", "#2ecc71", "#9b59b6", "#f39c12",
+                "#1abc9c", "#e67e22", "#e91e63", "#00bcd4", "#8bc34a",
+                "#ff5722", "#607d8b", "#cddc39", "#795548", "#03a9f4",
+            ]
             _DEFAULT_NODE_COLOR = "#5dade2"
+
+            # Determine coloring strategy: communities first, fallback to domain
+            cmap = circuit.community_map()
+            use_community_colors = len(cmap) > 0
+
+            # Compute degree centrality for node sizing
+            centrality_map: dict[str, float] = {}
+            if graph.number_of_nodes() > 1:
+                import networkx as nx_local
+                centrality_map = nx_local.degree_centrality(graph)
 
             for nid in graph.nodes:
                 node_data = graph.nodes[nid]
@@ -764,11 +964,28 @@ def visualize(
                 title = _extract_title(neuron.content) if neuron else nid
                 domain = node_data.get("domain")
                 pressure = node_data.get("pressure", 0.0)
-                size = 15 + min(pressure, 1.0) * 25
-                color = _DOMAIN_COLORS.get(domain, _DEFAULT_NODE_COLOR) if domain else _DEFAULT_NODE_COLOR
+                community_id = node_data.get("community_id")
 
+                # Size: base + stability + centrality (not just pressure)
                 card = circuit.get_card(nid)
+                stability = card.stability if card and card.stability else 0.0
+                centrality = centrality_map.get(nid, 0.0)
+                size = 12 + stability * 3 + centrality * 20 + min(pressure, 1.0) * 10
+
+                # Color: community-based or domain-based
+                if use_community_colors and community_id is not None:
+                    color = _COMMUNITY_PALETTE[community_id % len(_COMMUNITY_PALETTE)]
+                    group = community_id  # pyvis physics clustering
+                elif domain:
+                    color = _DOMAIN_COLORS.get(domain, _DEFAULT_NODE_COLOR)
+                    group = None
+                else:
+                    color = _DEFAULT_NODE_COLOR
+                    group = None
+
                 tooltip = f"<b>{title}</b><br>ID: {nid}"
+                if community_id is not None:
+                    tooltip += f"<br>community: {community_id}"
                 if card:
                     if card.stability is not None:
                         tooltip += f"<br>stability: {card.stability:.1f}"
@@ -778,7 +995,10 @@ def visualize(
                 if pressure > 0:
                     tooltip += f"<br>pressure: {pressure:.3f}"
 
-                net.add_node(nid, label=title, title=tooltip, size=size, color=color, font={"size": 12})
+                kwargs = {"label": title, "title": tooltip, "size": size, "color": color, "font": {"size": 12}}
+                if group is not None:
+                    kwargs["group"] = group
+                net.add_node(nid, **kwargs)
 
             _EDGE_STYLES = {
                 "requires": {"color": "#e74c3c", "dashes": False},
@@ -800,7 +1020,37 @@ def visualize(
 
             html = output.read_text()
             css_inject = "<style>html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }</style>"
+
+            # Build legend HTML
+            legend_items = ""
+            if use_community_colors:
+                # Group by community
+                groups: dict[int, int] = {}
+                for nid, cid in cmap.items():
+                    groups[cid] = groups.get(cid, 0) + 1
+                for cid in sorted(groups):
+                    c = _COMMUNITY_PALETTE[cid % len(_COMMUNITY_PALETTE)]
+                    legend_items += (
+                        f'<div style="display:flex;align-items:center;gap:6px;margin:2px 0">'
+                        f'<span style="width:12px;height:12px;border-radius:50%;background:{c};display:inline-block"></span>'
+                        f'<span>Community {cid} ({groups[cid]})</span></div>'
+                    )
+            else:
+                for domain_name, c in _DOMAIN_COLORS.items():
+                    legend_items += (
+                        f'<div style="display:flex;align-items:center;gap:6px;margin:2px 0">'
+                        f'<span style="width:12px;height:12px;border-radius:50%;background:{c};display:inline-block"></span>'
+                        f'<span>{domain_name}</span></div>'
+                    )
+
+            legend_html = (
+                '<div id="legend" style="position:fixed;top:10px;right:10px;background:rgba(26,26,46,0.9);'
+                'padding:12px 16px;border-radius:8px;color:#e0e0e0;font:13px monospace;z-index:1000;'
+                f'max-height:50vh;overflow-y:auto">{legend_items}</div>'
+            )
+
             html = html.replace("<head>", f"<head>{css_inject}", 1)
+            html = html.replace("</body>", f"{legend_html}</body>", 1)
             output.write_text(html)
 
             typer.echo(f"Saved to {output} ({graph.number_of_nodes()} neurons, {graph.number_of_edges()} synapses)")

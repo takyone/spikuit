@@ -60,6 +60,33 @@ Connections have weights that **strengthen or weaken over time**
 based on how you use them. Review two connected concepts close
 together, and their connection gets stronger.
 
+### Sources
+
+A **Source** tracks where knowledge came from — a URL, paper, book,
+or file. Sources enable citation in answers and version tracking.
+
+```bash
+spkt add "# Key Finding" --source-url "https://paper.com" --source-title "Paper"
+spkt learn "https://paper.com" -d cs --json    # bulk ingestion
+```
+
+One source can produce many neurons (1:N). Multiple neurons can share
+the same source (M:N). Sources are deduplicated by URL.
+
+### Communities
+
+Spikuit detects **communities** — clusters of densely connected neurons —
+using the Louvain algorithm. Communities improve retrieval by boosting
+results from the same cluster as your top hits.
+
+```bash
+spkt communities --detect          # Detect communities
+spkt communities --json            # View current assignment
+```
+
+Communities also drive the **visualization** — nodes are color-coded
+by community for easy visual identification of knowledge clusters.
+
 ### Why a graph?
 
 Flat flashcard decks treat each card independently. But knowledge
@@ -98,7 +125,7 @@ knowledge, not just individual due dates.
 Search in Spikuit combines multiple signals:
 
 ```
-relevance = text_similarity × (1 + memory_strength + centrality + pressure + feedback)
+relevance = text_similarity × (1 + memory_strength + centrality + pressure + feedback + community_boost)
 ```
 
 - **Text similarity**: keyword + semantic (embedding-based)
@@ -106,6 +133,7 @@ relevance = text_similarity × (1 + memory_strength + centrality + pressure + fe
 - **Centrality**: well-connected concepts rank higher
 - **Pressure**: concepts "primed" by recent reviews rank higher
 - **Feedback**: past search feedback (accepted/rejected) adjusts ranking
+- **Community boost**: results from the same community as top hits get a boost
 
 This means the same query can return different results over time as
 your knowledge and usage patterns evolve.

@@ -537,6 +537,22 @@ class Circuit:
             score = sem_sim * (1.0 + retrievability + centrality_norm + pressure)
             scored.append((score, n))
 
+        # Community boost: identify dominant community from top-K, boost same-community
+        if self.plasticity.community_weight > 0 and scored:
+            scored.sort(key=lambda x: x[0], reverse=True)
+            top_k = scored[:5]
+            community_counts: dict[int, int] = {}
+            for _, n in top_k:
+                cid = self._graph.nodes.get(n.id, {}).get("community_id")
+                if cid is not None:
+                    community_counts[cid] = community_counts.get(cid, 0) + 1
+            if community_counts:
+                dominant_cid = max(community_counts, key=community_counts.get)  # type: ignore[arg-type]
+                for i, (s, n) in enumerate(scored):
+                    ncid = self._graph.nodes.get(n.id, {}).get("community_id")
+                    if ncid == dominant_cid:
+                        scored[i] = (s * (1.0 + self.plasticity.community_weight), n)
+
         scored.sort(key=lambda x: x[0], reverse=True)
         results = [n for _, n in scored[:limit]]
 

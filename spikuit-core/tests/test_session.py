@@ -3,7 +3,7 @@
 import pytest
 import pytest_asyncio
 
-from spikuit_core import Circuit, Neuron, SynapseType
+from spikuit_core import Circuit, Neuron, Source, SynapseType
 from spikuit_core.embedder import Embedder
 from spikuit_core.session import LearnSession, QABotSession, _cosine_sim
 
@@ -546,3 +546,76 @@ async def test_learn_session_close(empty_circuit):
     await session.ingest("# A")
     await session.close()
     assert session.stats["added"] == 0
+
+
+# -- Source ingestion --------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_ingest_with_source_meta(empty_circuit):
+    """ingest() with source_meta creates and attaches Source."""
+    session = LearnSession(empty_circuit, persist=False)
+    src = Source(url="https://example.com/paper.pdf", title="A Paper")
+    neuron, _ = await session.ingest(
+        "# Key Finding\n\nSomething important.",
+        source_meta=src,
+    )
+
+    sources = await empty_circuit.get_sources_for_neuron(neuron.id)
+    assert len(sources) == 1
+    assert sources[0].url == "https://example.com/paper.pdf"
+
+
+@pytest.mark.asyncio
+async def test_ingest_source_dedup_by_url(empty_circuit):
+    """Multiple ingests with same source URL should reuse the Source."""
+    session = LearnSession(empty_circuit, persist=False)
+    src1 = Source(url="https://example.com/paper.pdf", title="Paper")
+    src2 = Source(url="https://example.com/paper.pdf", title="Paper v2")
+
+    n1, _ = await session.ingest("# Finding 1", source_meta=src1)
+    n2, _ = await session.ingest("# Finding 2", source_meta=src2)
+
+    s1 = await empty_circuit.get_sources_for_neuron(n1.id)
+    s2 = await empty_circuit.get_sources_for_neuron(n2.id)
+    # Both should point to the same source (first one created)
+    assert s1[0].id == s2[0].id
+
+
+@pytest.mark.asyncio
+async def test_ingest_without_source_meta(empty_circuit):
+    """ingest() without source_meta should not create Source."""
+    session = LearnSession(empty_circuit, persist=False)
+    neuron, _ = await session.ingest("# No Source")
+    sources = await empty_circuit.get_sources_for_neuron(neuron.id)
+    assert len(sources) == 0
+
+
+# -- QABot citation ----------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_ask_includes_sources_in_results(circuit):
+    """QABotSession.ask() results include attached sources."""
+    # Attach a source to math1
+    src = Source(url="https://cattheory.org", title="CT Book")
+    await circuit.add_source(src)
+    await circuit.attach_source("math1", src.id)
+
+    session = QABotSession(circuit, persist=False)
+    results = await session.ask("functor category")
+
+    functor_result = next((r for r in results if r.neuron_id == "math1"), None)
+    assert functor_result is not None
+    assert len(functor_result.sources) == 1
+    assert functor_result.sources[0].url == "https://cattheory.org"
+
+
+@pytest.mark.asyncio
+async def test_ask_no_sources_when_none_attached(circuit):
+    """Results with no attached sources have empty sources list."""
+    session = QABotSession(circuit, persist=False)
+    results = await session.ask("functor")
+
+    for r in results:
+        assert isinstance(r.sources, list)

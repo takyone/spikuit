@@ -14,13 +14,24 @@ Stats: !`spkt stats --json 2>/dev/null || echo '{}'`
 
 ## Flow
 
+### From conversation (default)
+
 1. Receive input (text, concept, notes)
 2. Structure into Markdown neurons (atomic, self-contained, titled)
 3. Check for duplicates: `spkt retrieve "<term>" --json`
-4. Add: `spkt add "<content>" -t <type> -d <domain> --json`
+4. Add: `spkt add "<content>" -t <type> -d <domain> --source-url "<url>" --json`
 5. Discover relations: `spkt retrieve "<content snippet>" --json`
 6. Create synapses: `spkt link <new> <related> -t <type>`
 7. Confirm with user
+
+### From URL or file (source ingestion)
+
+1. Fetch content: `spkt learn "<url-or-path>" -d <domain> --json`
+2. Read the returned `content` and `source_id`
+3. Split content into atomic concepts (chunking)
+4. For each chunk: `spkt add "<chunk>" -t <type> -d <domain> --source-url "<url>" --json`
+5. Discover relations and create synapses as above
+6. After communities change significantly: `spkt communities --detect`
 
 ## Structuring Rules
 
@@ -77,8 +88,11 @@ When multiple items at once:
 
 ```bash
 spkt add "<content>" -t <type> -d <domain> --json
+spkt add "<content>" -t <type> -d <domain> --source-url "<url>" --source-title "<title>" --json
+spkt learn "<url-or-path>" -d <domain> --json          # fetch + create Source
 spkt retrieve "<query>" --json
 spkt link <a> <b> -t <type>
 spkt list --json
-spkt inspect <id> --json
+spkt inspect <id> --json                                # includes sources[]
+spkt communities --detect --json                        # re-detect after major ingestion
 ```

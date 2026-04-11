@@ -70,14 +70,16 @@ spkt embed-all
 
 ```bash
 spkt add "# Functor\n\n圏の間の写像。" -t concept -d math
-spkt add "内容" --type fact --domain physics --source "教科書 p.42"
+spkt add "内容" --type fact --domain physics
+spkt add "内容" -t concept --source-url "https://example.com/paper.pdf" --source-title "論文"
 ```
 
 | オプション | 説明 |
 |-----------|------|
 | `-t`, `--type` | ニューロンタイプ（例: `concept`, `fact`, `procedure`） |
 | `-d`, `--domain` | 知識ドメイン（例: `math`, `french`） |
-| `-s`, `--source` | 出典URLまたは参照 |
+| `--source-url` | 出典URL（引用追跡用） |
+| `--source-title` | 出典タイトル（`--source-url`と併用） |
 
 ### `spkt list`
 
@@ -91,11 +93,11 @@ spkt list --limit 50
 
 ### `spkt inspect`
 
-ニューロンの詳細情報: コンテンツ、FSRS状態、圧力、接続シナプス。
+ニューロンの詳細情報: コンテンツ、FSRS状態、圧力、出典、コミュニティ、接続シナプス。
 
 ```bash
 spkt inspect <neuron-id>
-spkt inspect <neuron-id> --json
+spkt inspect <neuron-id> --json    # sources[]とcommunity_idを含む
 ```
 
 ### `spkt link`
@@ -150,6 +152,36 @@ Scaffold適応コンテンツでニューロンを提示し、セルフグレー
 ```bash
 spkt quiz
 spkt quiz --limit 10
+```
+
+## ソース取り込み
+
+### `spkt learn`
+
+ソースファイルまたはURLを取り込んでエージェント駆動のチャンキングに備える。
+Sourceレコードを作成し、コンテンツを出力する。
+
+```bash
+spkt learn "https://example.com/article" -d cs --json
+spkt learn ./notes.md -d math --json
+```
+
+| オプション | 説明 |
+|-----------|------|
+| `-d`, `--domain` | 取り込みコンテンツのドメインタグ |
+| `--title` | ソースタイトルの上書き |
+
+## コミュニティ
+
+### `spkt communities`
+
+Louvainアルゴリズムでナレッジグラフ内のコミュニティ（クラスタ）を表示・検出する。
+
+```bash
+spkt communities                   # 現在のコミュニティを表示
+spkt communities --detect          # 再検出を実行
+spkt communities --detect -r 2.0   # 高解像度 = より多くのコミュニティ
+spkt communities --json            # マシンリーダブル出力
 ```
 
 ## 検索

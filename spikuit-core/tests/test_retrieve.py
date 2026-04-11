@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 import pytest_asyncio
 
-from spikuit_core import Circuit, Grade, Neuron, Plasticity, Spike, SynapseType
+from spikuit_core import Circuit, Grade, Neuron, Plasticity, Source, Spike, SynapseType
 
 
 @pytest_asyncio.fixture
@@ -166,3 +166,44 @@ async def test_retrieve_logs_query(circuit: Circuit):
     )
     assert len(rows) >= 1
     assert rows[0]["query"] == "test"
+
+
+# -------------------------------------------------------------------
+# Community boost surfaces same-community neurons
+# -------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_community_boost_ranks_same_community_higher(circuit: Circuit):
+    """Neurons in the dominant community should rank higher after community boost."""
+    # Create two clusters about "algebra"
+    # Cluster A: connected, will form a community
+    a1 = Neuron.create("# Abstract Algebra\n\nStudy of algebraic structures.")
+    a2 = Neuron.create("# Group Theory\n\nStudy of algebraic groups.")
+    a3 = Neuron.create("# Ring Theory\n\nStudy of algebraic rings.")
+    # Cluster B: isolated node about algebra
+    b1 = Neuron.create("# Algebra basics\n\nIntroduction to algebra.")
+
+    for n in [a1, a2, a3, b1]:
+        await circuit.add_neuron(n)
+
+    # Fully connect cluster A
+    await circuit.add_synapse(a1.id, a2.id, SynapseType.RELATES_TO)
+    await circuit.add_synapse(a1.id, a3.id, SynapseType.RELATES_TO)
+    await circuit.add_synapse(a2.id, a3.id, SynapseType.RELATES_TO)
+
+    # Detect communities so cluster A shares a community
+    await circuit.detect_communities()
+
+    # All cluster A should be same community, b1 different
+    a_cid = circuit.get_community(a1.id)
+    assert a_cid is not None
+    assert circuit.get_community(a2.id) == a_cid
+    assert circuit.get_community(a3.id) == a_cid
+
+    results = await circuit.retrieve("algebra")
+    ids = [r.id for r in results]
+    # All cluster A should appear before b1 due to community + centrality boost
+    a_indices = [ids.index(n.id) for n in [a1, a2, a3] if n.id in ids]
+    b_index = ids.index(b1.id) if b1.id in ids else len(ids)
+    assert all(ai < b_index for ai in a_indices)
