@@ -1,10 +1,10 @@
 # CLIリファレンス
 
-全コマンド `--json` フラグ対応。
+全コマンドが `--json` フラグに対応しています。
 
 ## グローバルオプション
 
-ほとんどのコマンドで以下のフラグが使える:
+ほとんどのコマンドで以下のフラグが使えます:
 
 | オプション | 説明 |
 |-----------|------|
@@ -15,9 +15,9 @@
 
 ### `spkt init`
 
-カレントディレクトリに新しいBrainを初期化する。
-フラグなしでは対話ウィザードを起動。
-`--json` または `--provider` を明示すると非対話で実行。
+カレントディレクトリに新しいBrainを初期化します。
+フラグなしでは対話ウィザードを起動します。
+`--json` または `--provider` を明示すると非対話で実行されます。
 
 ```
 $ spkt init
@@ -47,7 +47,7 @@ spkt init -p ollama --json             # エージェント向けJSON出力
 
 ### `spkt config`
 
-現在のBrain設定を表示する。
+現在のBrain設定を表示します。
 
 ```bash
 spkt config
@@ -56,7 +56,7 @@ spkt config --json
 
 ### `spkt embed-all`
 
-既存のニューロンで埋め込みがないものをバックフィルする。
+既存のニューロンで埋め込みがないものをバックフィルします。
 
 ```bash
 spkt embed-all
@@ -66,7 +66,7 @@ spkt embed-all
 
 ### `spkt add`
 
-新しいニューロンをCircuitに追加する。
+新しいニューロンをCircuitに追加します。
 
 ```bash
 spkt add "# Functor\n\n圏の間の写像。" -t concept -d math
@@ -93,7 +93,7 @@ spkt list --limit 50
 
 ### `spkt inspect`
 
-ニューロンの詳細情報: コンテンツ、FSRS状態、圧力、出典、コミュニティ、接続シナプス。
+ニューロンの詳細情報を表示します: コンテンツ、FSRS状態、圧力、出典、コミュニティ、接続シナプス。
 
 ```bash
 spkt inspect <neuron-id>
@@ -102,7 +102,7 @@ spkt inspect <neuron-id> --json    # sources[]とcommunity_idを含む
 
 ### `spkt link`
 
-2つのニューロン間にシナプスを作成する。
+2つのニューロン間にシナプスを作成します。
 
 ```bash
 spkt link <pre-id> <post-id> --type requires
@@ -120,7 +120,7 @@ spkt link <a-id> <b-id> --type relates_to
 
 ### `spkt fire`
 
-復習イベントを記録する（スパイクを発火）。
+復習イベントを記録します（スパイクを発火）。
 
 ```bash
 spkt fire <neuron-id> --grade fire
@@ -136,7 +136,7 @@ spkt fire <neuron-id> -g strong
 
 ### `spkt due`
 
-復習期限のニューロンを表示する。
+復習期限のニューロンを表示します。
 
 ```bash
 spkt due
@@ -146,8 +146,8 @@ spkt due --json
 
 ### `spkt quiz`
 
-インタラクティブなフラッシュカード復習セッション。
-Scaffold適応コンテンツでニューロンを提示し、セルフグレーディングを受け付ける。
+インタラクティブなフラッシュカード復習セッションです。
+Scaffold適応コンテンツでニューロンを提示し、セルフグレーディングを受け付けます。
 
 ```bash
 spkt quiz
@@ -158,8 +158,8 @@ spkt quiz --limit 10
 
 ### `spkt learn`
 
-ソースファイルまたはURLを取り込んでエージェント駆動のチャンキングに備える。
-Sourceレコードを作成し、コンテンツを出力する。
+ソースファイルまたはURLを取り込んで、エージェント駆動のチャンキングに備えます。
+Sourceレコードを作成し、コンテンツを出力します。
 
 ```bash
 spkt learn "https://example.com/article" -d cs --json
@@ -175,7 +175,7 @@ spkt learn ./notes.md -d math --json
 
 ### `spkt communities`
 
-Louvainアルゴリズムでナレッジグラフ内のコミュニティ（クラスタ）を表示・検出する。
+Louvainアルゴリズムでナレッジグラフ内のコミュニティ（クラスタ）を表示・検出します。
 
 ```bash
 spkt communities                   # 現在のコミュニティを表示
@@ -188,8 +188,8 @@ spkt communities --json            # マシンリーダブル出力
 
 ### `spkt retrieve`
 
-グラフ重み付き検索。キーワードマッチング、意味的類似度、
-FSRS検索可能性、グラフ中心性、復習圧力を組み合わせる。
+グラフ重み付き検索です。キーワードマッチング、意味的類似度、
+FSRS検索可能性、グラフ中心性、復習圧力を組み合わせます。
 
 ```bash
 spkt retrieve "圏論"
@@ -200,7 +200,7 @@ spkt retrieve "functor" --limit 5
 
 ### `spkt visualize`
 
-インタラクティブなHTMLグラフ可視化を生成する。
+インタラクティブなHTMLグラフ可視化を生成します。
 
 ```bash
 spkt visualize
@@ -211,7 +211,7 @@ spkt visualize -o my-graph.html
 
 ### `spkt stats`
 
-Circuit統計: ニューロン数、シナプス数、グラフ密度。
+Circuit統計を表示します: ニューロン数、シナプス数、グラフ密度。
 
 ```bash
 spkt stats

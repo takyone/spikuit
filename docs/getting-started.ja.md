@@ -10,11 +10,11 @@ uv sync --package spikuit-cli
 
 ## Brainの初期化
 
-**Brain**は自己完結型のナレッジ空間 — Obsidian vaultやgitリポジトリのようなもの。
-各Brainは独自のナレッジグラフ、設定、復習スケジュールを持つ。
-ドメインやプロジェクトごとに複数のBrainを持てる。
+**Brain**は自己完結型のナレッジ空間です — Obsidian vaultやgitリポジトリのようなものです。
+各Brainは独自のナレッジグラフ、設定、復習スケジュールを持ちます。
+ドメインやプロジェクトごとに複数のBrainを持てます。
 
-`spkt init` で対話ウィザードを起動:
+`spkt init` で対話ウィザードを起動します:
 
 ```
 $ spkt init
@@ -40,7 +40,7 @@ Create brain? [Y/n]:
 Initialized brain 'math' at /home/user/math/.spikuit/
 ```
 
-フラグを使えば非対話で初期化もできる:
+フラグを使えば非対話で初期化もできます:
 
 ```bash
 spkt init -p openai-compat \
@@ -48,7 +48,7 @@ spkt init -p openai-compat \
   --model text-embedding-nomic-embed-text-v1.5
 ```
 
-作成されるもの:
+以下が作成されます:
 
 ```
 .spikuit/
@@ -57,8 +57,8 @@ spkt init -p openai-compat \
 └── cache/         # 埋め込みキャッシュ
 ```
 
-gitと同様に、`spkt`はカレントディレクトリから上に辿って`.spikuit/`を自動探索する。
-別のBrainを操作するには `--brain <パス>` を使う。
+gitと同様に、`spkt`はカレントディレクトリから上に辿って`.spikuit/`を自動探索します。
+別のBrainを操作するには `--brain <パス>` を使います。
 
 ## 知識を追加する
 
