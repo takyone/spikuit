@@ -1,6 +1,6 @@
 [project]
 name = "spikuit-cli"
-version = "0.3.0"
+version = "0.4.0"
 description = "CLI interface for Spikuit (spkt command)"
 requires-python = ">=3.11"
 dependencies = [

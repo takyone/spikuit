@@ -1,6 +1,6 @@
 """Spikuit Core — FSRS + Knowledge Graph + Spreading Activation engine."""
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 from .circuit import Circuit, ReadOnlyError
 from .config import BrainConfig, find_spikuit_root, init_brain, load_config
