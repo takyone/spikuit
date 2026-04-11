@@ -65,11 +65,11 @@ directory. To operate on a different Brain, use `--brain <path>`.
 
 ```bash
 # Add a concept
-spkt add "# Functor\n\nA mapping between categories that preserves structure." \
+spkt neuron add "# Functor\n\nA mapping between categories that preserves structure." \
   -t concept -d math
 
 # Add another
-spkt add "# Monad\n\nA monoid in the category of endofunctors." \
+spkt neuron add "# Monad\n\nA monoid in the category of endofunctors." \
   -t concept -d math
 ```
 
@@ -77,20 +77,20 @@ spkt add "# Monad\n\nA monoid in the category of endofunctors." \
 
 ```bash
 # Monad requires understanding Functor
-spkt link <monad-id> <functor-id> --type requires
+spkt synapse add <monad-id> <functor-id> --type requires
 
 # See the connection
-spkt inspect <monad-id>
+spkt neuron inspect <monad-id>
 ```
 
 ## Review
 
 ```bash
 # What's due for review?
-spkt due
+spkt neuron due
 
 # Review a concept (grade: miss/weak/fire/strong)
-spkt fire <neuron-id> --grade fire
+spkt neuron fire <neuron-id> --grade fire
 
 # Interactive quiz session
 spkt quiz
@@ -110,10 +110,10 @@ spkt embed-all
 
 ```bash
 # Ingest a URL
-spkt learn "https://example.com/article" -d cs --json
+spkt source learn "https://example.com/article" -d cs --json
 
 # Ingest a directory of files
-spkt learn ./papers/ -d cs --json
+spkt source learn ./papers/ -d cs --json
 ```
 
 ## Visualize
@@ -150,3 +150,4 @@ spkt export --format qabot -o qa-bundle.db
 | `extends` | Directed | A extends B |
 | `contrasts` | Bidirectional | A contrasts with B |
 | `relates_to` | Bidirectional | General association |
+| `summarizes` | Directed | Community summary → member |

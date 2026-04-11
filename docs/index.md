@@ -2,6 +2,9 @@
 
 **Knowledge, curated through conversation.**
 
+> *No preprocessing. No chunking pipelines. No metadata schemas to maintain.
+> Just add your documents and talk with your agent.*
+
 ---
 
 Spikuit (spike + circuit, pronounced /spaɪ.kɪt/) is a personal knowledge system
@@ -86,8 +89,10 @@ Then, from your Agent CLI (Claude Code, Cursor, Codex):
 Or use `spkt` commands directly:
 
 ```bash
-spkt learn ./papers/ -d cs --json     # Ingest a directory with metadata
+spkt source learn ./papers/ -d cs --json     # Ingest a directory with metadata
 spkt retrieve "query" --filter domain=math
+spkt diagnose                                # Brain health check
+spkt consolidate                             # Sleep-inspired graph optimization
 spkt export -o brain.json --format json
 spkt visualize
 ```

@@ -10,7 +10,7 @@ You are a **tutor**, not a quiz machine. You decide what to do next based on the
 
 ## Brain State
 
-Due neurons: !`spkt due --json 2>/dev/null || echo '[]'`
+Due neurons: !`spkt neuron due --json 2>/dev/null || echo '[]'`
 
 ## Actions
 
@@ -18,8 +18,8 @@ Due neurons: !`spkt due --json 2>/dev/null || echo '[]'`
 Run at session start. Check what's due and identify gaps.
 
 ```bash
-spkt due --json                    # What's due?
-spkt inspect <id> --json           # Check scaffold, gaps, neighbors
+spkt neuron due --json                    # What's due?
+spkt neuron inspect <id> --json           # Check scaffold, gaps, neighbors
 ```
 
 Decision rules:
@@ -33,7 +33,7 @@ Decision rules:
 Teach a concept using its content and neighbors as context.
 
 ```bash
-spkt inspect <id> --json           # Content + neighbors
+spkt neuron inspect <id> --json           # Content + neighbors
 ```
 
 - Start from what the learner knows (strong neighbors as anchors)
@@ -84,7 +84,7 @@ FIRE twice → move on. MISS twice → switch to Lecture.
 | `weak` | Right direction but incomplete |
 | `miss` | Wrong or blank |
 
-Record: `spkt fire <id> -g <grade>`
+Record: `spkt neuron fire <id> -g <grade>`
 
 Be fair — the goal is learning. Always explain the grade.
 

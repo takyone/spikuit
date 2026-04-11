@@ -17,7 +17,16 @@ spikuit/
 │   │   └── db.py          # Async SQLite persistence
 │   └── tests/             # pytest-asyncio tests
 ├── spikuit-cli/       # spkt command (Typer)
-│   └── src/spikuit_cli/main.py
+│   └── src/spikuit_cli/
+│       ├── main.py        # Root commands + deprecation wrappers
+│       ├── helpers.py     # Shared helpers (_get_circuit, _out, etc.)
+│       └── commands/      # Resource-oriented subcommands
+│           ├── neuron.py  # spkt neuron {add,list,inspect,remove,merge,due,fire}
+│           ├── synapse.py # spkt synapse {add,remove,weight,list}
+│           ├── source.py  # spkt source {learn,list,inspect,update,refresh}
+│           ├── domain.py  # spkt domain {list,rename,merge}
+│           ├── community.py # spkt community {detect,list}
+│           └── skills.py  # spkt skills {install,list}
 └── spikuit-agents/    # Future: SDK / adapters
 ```
 
@@ -64,21 +73,55 @@ Config lives in `.spikuit/config.toml`.
 
 All commands support `--json` for machine-readable output and `--brain` to target a specific Brain.
 
+### Root commands
+
 | Command | Purpose |
 |---------|---------|
 | `spkt init` | Initialize .spikuit/ brain |
 | `spkt config` | Show brain configuration |
 | `spkt embed-all` | Backfill embeddings |
-| `spkt add` | Add a Neuron |
-| `spkt fire` | Fire a Spike (FSRS + APPNP + STDP) |
-| `spkt due` | List neurons due for review |
 | `spkt retrieve` | Graph-weighted search |
-| `spkt list` | List neurons (filter by type/domain) |
-| `spkt link` | Create a Synapse |
-| `spkt inspect` | Neuron detail |
 | `spkt stats` | Circuit statistics |
+| `spkt diagnose` | Brain health diagnostics |
+| `spkt progress` | Learning progress report |
+| `spkt manual` | Auto-generated user guide |
+| `spkt consolidate` | Sleep-inspired knowledge consolidation (dry-run) |
+| `spkt consolidate apply` | Apply consolidation plan |
 | `spkt quiz` | Interactive flashcard review session |
 | `spkt visualize` | Interactive graph visualization (HTML) |
+| `spkt export` | Export brain (tar/json/qabot) |
+| `spkt import` | Import brain from archive |
+
+### Resource subcommands
+
+| Command | Purpose |
+|---------|---------|
+| `spkt neuron add` | Add a Neuron |
+| `spkt neuron list` | List neurons (filter by type/domain) |
+| `spkt neuron inspect` | Neuron detail (content, FSRS, neighbors) |
+| `spkt neuron remove` | Remove a neuron and its synapses |
+| `spkt neuron merge` | Merge neurons (content + synapses + sources) |
+| `spkt neuron due` | List neurons due for review |
+| `spkt neuron fire` | Fire a Spike (FSRS + APPNP + STDP) |
+| `spkt synapse add` | Create a Synapse |
+| `spkt synapse remove` | Remove a Synapse |
+| `spkt synapse weight` | Set synapse weight |
+| `spkt synapse list` | List synapses (filter by neuron/type) |
+| `spkt source learn` | Ingest URL/file/directory |
+| `spkt source list` | List sources with neuron counts |
+| `spkt source inspect` | Source detail + attached neurons |
+| `spkt source update` | Update source metadata |
+| `spkt source refresh` | Re-fetch URL sources |
+| `spkt domain list` | List domains with counts |
+| `spkt domain rename` | Rename a domain |
+| `spkt domain merge` | Merge domains |
+| `spkt domain audit` | Domain ↔ community alignment analysis |
+| `spkt community detect` | Run community detection |
+| `spkt community list` | Show community assignments |
+| `spkt skills install` | Install SKILL.md for Agent CLIs |
+| `spkt skills list` | List available skills |
+
+Old flat commands (`spkt add`, `spkt fire`, etc.) still work with deprecation warnings. Use the resource-oriented form above.
 
 ## Grade Scale
 
@@ -97,6 +140,7 @@ All commands support `--json` for machine-readable output and `--brain` to targe
 | `extends` | Directed | A extends B |
 | `contrasts` | Bidirectional | A contrasts with B |
 | `relates_to` | Bidirectional | General association |
+| `summarizes` | Directed | Community summary → member |
 
 ## Architecture
 

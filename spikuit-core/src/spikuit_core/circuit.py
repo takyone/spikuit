@@ -7,7 +7,8 @@ the in-memory NetworkX graph, and exposes all operations external layers
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import hashlib
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import networkx as nx
@@ -15,7 +16,7 @@ from fsrs import Card, Rating, Scheduler
 
 from .db import DEFAULT_DB_PATH, Database
 from .embedder import Embedder, EmbeddingType, vec_to_blob
-from .models import Grade, Neuron, Plasticity, QuizItem, QuizItemRole, ScaffoldLevel, Source, Spike, Synapse, SynapseType
+from .models import Grade, Neuron, Plasticity, QuizItem, QuizItemRole, ScaffoldLevel, Source, Spike, Synapse, SynapseConfidence, SynapseType
 from .propagation import compute_propagation, compute_stdp, decay_all_pressure
 
 # Grade → FSRS Rating mapping
@@ -284,6 +285,8 @@ class Circuit:
         post: str,
         type: SynapseType,
         weight: float = 0.5,
+        confidence: SynapseConfidence = SynapseConfidence.EXTRACTED,
+        confidence_score: float = 1.0,
     ) -> list[Synapse]:
         """Add a Synapse between two neurons.
 
@@ -295,6 +298,8 @@ class Circuit:
             post: Target neuron ID.
             type: Connection semantics.
             weight: Initial edge weight (default ``0.5``).
+            confidence: Provenance tag (EXTRACTED, INFERRED, AMBIGUOUS).
+            confidence_score: Confidence score (0.0–1.0, meaningful for INFERRED).
 
         Returns:
             List of created synapses (1 for directed, 2 for bidirectional).
@@ -312,7 +317,10 @@ class Circuit:
 
         created: list[Synapse] = []
 
-        synapse = Synapse(pre=pre, post=post, type=type, weight=weight)
+        synapse = Synapse(
+            pre=pre, post=post, type=type, weight=weight,
+            confidence=confidence, confidence_score=confidence_score,
+        )
         await self._db.insert_synapse(synapse)
         self._graph.add_edge(
             pre, post, type=type.value, weight=weight, co_fires=0,
@@ -320,7 +328,10 @@ class Circuit:
         created.append(synapse)
 
         if type.is_bidirectional:
-            reverse = Synapse(pre=post, post=pre, type=type, weight=weight)
+            reverse = Synapse(
+                pre=post, post=pre, type=type, weight=weight,
+                confidence=confidence, confidence_score=confidence_score,
+            )
             await self._db.insert_synapse(reverse)
             self._graph.add_edge(
                 post, pre, type=type.value, weight=weight, co_fires=0,
@@ -346,6 +357,326 @@ class Circuit:
             if self._graph.has_edge(post, pre):
                 self._graph.remove_edge(post, pre)
 
+    async def list_synapses(
+        self,
+        neuron_id: str | None = None,
+        type: SynapseType | None = None,
+    ) -> list[Synapse]:
+        """List synapses, optionally filtered by neuron or type.
+
+        Args:
+            neuron_id: If given, return synapses where this neuron is pre or post.
+            type: If given, filter to this synapse type.
+
+        Returns:
+            List of matching synapses.
+        """
+        if neuron_id is not None:
+            outgoing = await self._db.get_synapses_from(neuron_id)
+            incoming = await self._db.get_synapses_to(neuron_id)
+            # Deduplicate (bidirectional types appear in both)
+            seen: set[tuple[str, str, str]] = set()
+            synapses: list[Synapse] = []
+            for s in outgoing + incoming:
+                key = (s.pre, s.post, s.type.value)
+                if key not in seen:
+                    seen.add(key)
+                    synapses.append(s)
+        else:
+            synapses = await self._db.get_all_synapses()
+
+        if type is not None:
+            synapses = [s for s in synapses if s.type == type]
+
+        return synapses
+
+    async def set_synapse_weight(
+        self,
+        pre: str,
+        post: str,
+        type: SynapseType,
+        weight: float,
+    ) -> Synapse:
+        """Set the weight of an existing synapse.
+
+        Args:
+            pre: Source neuron ID.
+            post: Target neuron ID.
+            type: Synapse type.
+            weight: New weight value.
+
+        Returns:
+            The updated Synapse.
+
+        Raises:
+            ValueError: If the synapse does not exist.
+        """
+        self._guard_readonly()
+        synapse = await self._db.get_synapse(pre, post, type)
+        if synapse is None:
+            raise ValueError(f"Synapse not found: {pre!r} → {post!r} ({type.value})")
+        synapse.weight = weight
+        await self._db.update_synapse(synapse)
+        if self._graph.has_edge(pre, post):
+            self._graph[pre][post]["weight"] = weight
+        return synapse
+
+    async def merge_neurons(
+        self,
+        source_ids: list[str],
+        into_id: str,
+    ) -> dict:
+        """Merge multiple neurons into a target neuron.
+
+        Content from source neurons is appended to the target. Synapses are
+        redirected, source links transferred, and source neurons removed.
+
+        Args:
+            source_ids: IDs of neurons to merge (will be deleted).
+            into_id: ID of the target neuron (survives).
+
+        Returns:
+            Summary dict with merge statistics.
+
+        Raises:
+            ValueError: If any neuron does not exist or into_id is in source_ids.
+        """
+        self._guard_readonly()
+
+        if into_id in source_ids:
+            raise ValueError("into_id must not be in source_ids")
+
+        target = await self._db.get_neuron(into_id)
+        if target is None:
+            raise ValueError(f"Target neuron not found: {into_id!r}")
+
+        sources_to_merge = []
+        for sid in source_ids:
+            n = await self._db.get_neuron(sid)
+            if n is None:
+                raise ValueError(f"Source neuron not found: {sid!r}")
+            sources_to_merge.append(n)
+
+        # 1. Append content
+        merged_content = target.content
+        for n in sources_to_merge:
+            merged_content += "\n\n---\n\n" + n.content
+        target.content = merged_content
+        await self._db.update_neuron(target)
+
+        # 2. Redirect synapses
+        synapses_redirected = 0
+        for sid in source_ids:
+            for s in await self._db.get_synapses_from(sid):
+                if s.post == into_id or s.post in source_ids:
+                    continue  # skip self-loops and links between merged neurons
+                existing = await self._db.get_synapse(into_id, s.post, s.type)
+                if existing is None:
+                    new_syn = Synapse(pre=into_id, post=s.post, type=s.type, weight=s.weight)
+                    await self._db.insert_synapse(new_syn)
+                    self._graph.add_edge(into_id, s.post, type=s.type.value, weight=s.weight, co_fires=0)
+                    synapses_redirected += 1
+
+            for s in await self._db.get_synapses_to(sid):
+                if s.pre == into_id or s.pre in source_ids:
+                    continue
+                existing = await self._db.get_synapse(s.pre, into_id, s.type)
+                if existing is None:
+                    new_syn = Synapse(pre=s.pre, post=into_id, type=s.type, weight=s.weight)
+                    await self._db.insert_synapse(new_syn)
+                    self._graph.add_edge(s.pre, into_id, type=s.type.value, weight=s.weight, co_fires=0)
+                    synapses_redirected += 1
+
+        # 3. Transfer source attachments
+        sources_transferred = 0
+        for sid in source_ids:
+            neuron_sources = await self._db.get_sources_for_neuron(sid)
+            for src in neuron_sources:
+                await self._db.attach_source(into_id, src.id)
+                sources_transferred += 1
+
+        # 4. Remove source neurons (cascades synapses + graph nodes)
+        for sid in source_ids:
+            await self.remove_neuron(sid)
+
+        # 5. Re-embed target
+        if self._embedder is not None:
+            text = self._embedder.apply_prefix(
+                self._prepare_embed_text(target), EmbeddingType.DOCUMENT,
+            )
+            vec = await self._embedder.embed(text)
+            await self._db.upsert_embedding(into_id, vec_to_blob(vec))
+
+        # 6. Update in-memory graph node
+        if into_id in self._graph:
+            self._graph.nodes[into_id]["content"] = target.content
+
+        return {
+            "merged": len(source_ids),
+            "into": into_id,
+            "synapses_redirected": synapses_redirected,
+            "sources_transferred": sources_transferred,
+        }
+
+    # -- _meta neurons ------------------------------------------------------
+
+    async def upsert_meta_neuron(self, meta_id: str, content: str) -> Neuron:
+        """Create or replace a _meta domain neuron.
+
+        _meta neurons are auto-generated descriptions of the Brain itself.
+        They participate in retrieve() but are excluded from due/fire.
+
+        Args:
+            meta_id: The neuron ID (e.g. ``"_meta:overview"``).
+            content: Markdown content for the neuron.
+
+        Returns:
+            The created or updated Neuron.
+        """
+        self._guard_readonly()
+        existing = await self._db.get_neuron(meta_id)
+        if existing:
+            existing.content = content
+            existing.updated_at = datetime.now(timezone.utc)
+            await self._db.update_neuron(existing)
+            if meta_id in self._graph:
+                self._graph.nodes[meta_id]["content"] = content
+            if self._embedder:
+                await self._embed_neuron(existing)
+            return existing
+
+        neuron = Neuron(
+            id=meta_id,
+            content=content,
+            type="meta",
+            domain="_meta",
+        )
+        await self._db.insert_neuron(neuron)
+        self._graph.add_node(neuron.id, type="meta", domain="_meta")
+        card = Card()
+        self._cards[neuron.id] = card
+        await self._db.upsert_fsrs_card(neuron.id, card.to_json())
+        if self._embedder:
+            await self._embed_neuron(neuron)
+        return neuron
+
+    async def clear_meta_neurons(self) -> int:
+        """Remove all _meta domain neurons.
+
+        Returns:
+            Number of neurons removed.
+        """
+        self._guard_readonly()
+        meta_ids = [
+            nid for nid in self._graph.nodes
+            if self._graph.nodes[nid].get("domain") == "_meta"
+        ]
+        for nid in meta_ids:
+            await self.remove_neuron(nid)
+        return len(meta_ids)
+
+    async def generate_manual(self, *, write_meta: bool = False) -> dict:
+        """Generate a user guide for this Brain.
+
+        Returns a dict with domain overview, sample topics, knowledge cutoff,
+        coverage notes, and source attribution. Optionally writes _meta neurons.
+
+        Args:
+            write_meta: If True, upsert _meta neurons with manual content.
+
+        Returns:
+            Dict with keys: domains, cutoff, coverage, sources, neuron_count.
+        """
+        # Gather domain info (exclude _meta)
+        domain_info: dict[str, dict] = {}
+        for nid, data in self._graph.nodes(data=True):
+            domain = data.get("domain") or "uncategorized"
+            if domain == "_meta":
+                continue
+            if domain not in domain_info:
+                domain_info[domain] = {"count": 0, "neurons": []}
+            domain_info[domain]["count"] += 1
+            domain_info[domain]["neurons"].append(nid)
+
+        # For each domain, pick representative topics (highest centrality)
+        centrality = nx.degree_centrality(self._graph) if self._graph else {}
+        domains: list[dict] = []
+        for domain, info in sorted(domain_info.items(), key=lambda x: -x[1]["count"]):
+            # Top neurons by centrality
+            ranked = sorted(info["neurons"], key=lambda n: centrality.get(n, 0), reverse=True)
+            top_ids = ranked[:5]
+            topics = []
+            for nid in top_ids:
+                n = await self._db.get_neuron(nid)
+                if n:
+                    title = n.content.split("\n")[0].lstrip("# ").strip()
+                    if title:
+                        topics.append(title)
+            limited = info["count"] < 5
+            domains.append({
+                "name": domain,
+                "neuron_count": info["count"],
+                "topics": topics,
+                "limited_coverage": limited,
+            })
+
+        # Knowledge cutoff: latest source fetch date
+        sources = await self._db.list_sources()
+        cutoff = None
+        source_list: list[dict] = []
+        for src in sources:
+            if src.fetched_at and (cutoff is None or src.fetched_at > cutoff):
+                cutoff = src.fetched_at
+            source_list.append({
+                "id": src.id,
+                "title": src.title or src.url or src.id,
+                "url": src.url,
+                "fetched_at": src.fetched_at.isoformat() if src.fetched_at else None,
+            })
+
+        total_neurons = sum(1 for nid in self._graph.nodes
+                           if self._graph.nodes[nid].get("domain") != "_meta")
+
+        result = {
+            "neuron_count": total_neurons,
+            "domains": domains,
+            "cutoff": cutoff.isoformat() if cutoff else None,
+            "sources": source_list,
+        }
+
+        if write_meta:
+            # Overview
+            overview_lines = [f"# Brain Overview\n\nThis brain contains {total_neurons} neurons across {len(domains)} domains.\n"]
+            for d in domains:
+                coverage = " (limited coverage)" if d["limited_coverage"] else ""
+                overview_lines.append(f"- **{d['name']}**: {d['neuron_count']} neurons{coverage}")
+            await self.upsert_meta_neuron("_meta:overview", "\n".join(overview_lines))
+
+            # Per-domain coverage
+            for d in domains:
+                topics_str = ", ".join(d["topics"]) if d["topics"] else "no topics yet"
+                content = f"# {d['name']} domain\n\n{d['neuron_count']} neurons. Topics: {topics_str}."
+                await self.upsert_meta_neuron(f"_meta:coverage:{d['name']}", content)
+
+            # Cutoff
+            cutoff_str = cutoff.strftime("%Y-%m-%d") if cutoff else "no sources fetched"
+            await self.upsert_meta_neuron(
+                "_meta:cutoff",
+                f"# Knowledge Cutoff\n\nLatest source fetch: {cutoff_str}.",
+            )
+
+            # Examples
+            example_lines = ["# Sample Questions\n"]
+            for d in domains:
+                if d["topics"]:
+                    example_lines.append(f"## {d['name']}")
+                    for topic in d["topics"][:3]:
+                        example_lines.append(f"- What is {topic}?")
+                    example_lines.append("")
+            await self.upsert_meta_neuron("_meta:examples", "\n".join(example_lines))
+
+        return result
+
     # -- Spike (fire) -------------------------------------------------------
 
     async def fire(self, spike: Spike) -> Card:
@@ -368,6 +699,13 @@ class Circuit:
             The updated FSRS Card with new scheduling state.
         """
         self._guard_readonly()
+        # Guard: auto-generated neurons are not reviewable
+        node_data = self._graph.nodes.get(spike.neuron_id, {})
+        if node_data.get("domain") == "_meta" or node_data.get("type") == "community_summary":
+            raise ValueError(
+                f"Cannot fire auto-generated neuron {spike.neuron_id!r}: "
+                "auto-generated neurons are not reviewable."
+            )
         # 1. Record spike
         await self._db.insert_spike(spike)
 
@@ -450,6 +788,10 @@ class Circuit:
         due: list[str] = []
         for neuron_id, card in self._cards.items():
             if card.due <= now:
+                # Skip auto-generated neurons — not reviewable
+                node_data = self._graph.nodes.get(neuron_id, {})
+                if node_data.get("domain") == "_meta" or node_data.get("type") == "community_summary":
+                    continue
                 due.append(neuron_id)
                 if len(due) >= limit:
                     break
@@ -869,6 +1211,391 @@ class Circuit:
                 result[nid] = cid
         return result
 
+    async def generate_community_summaries(self) -> list[dict]:
+        """Generate summary neurons for each community.
+
+        For each community, creates a ``community_summary`` neuron with
+        member titles and domain info, linked to members via ``summarizes``
+        synapses. Replaces existing summaries on re-run.
+
+        Returns:
+            List of dicts with summary neuron info per community.
+        """
+        self._guard_readonly()
+
+        # Build community → members mapping (exclude _meta)
+        communities: dict[int, list[str]] = {}
+        for nid in self._graph.nodes:
+            data = self._graph.nodes[nid]
+            if data.get("domain") == "_meta":
+                continue
+            if data.get("type") == "community_summary":
+                continue
+            cid = data.get("community_id")
+            if cid is not None:
+                communities.setdefault(cid, []).append(nid)
+
+        if not communities:
+            return []
+
+        # Remove old community_summary neurons
+        old_summaries = [
+            nid for nid in list(self._graph.nodes)
+            if self._graph.nodes[nid].get("type") == "community_summary"
+        ]
+        for nid in old_summaries:
+            await self.remove_neuron(nid)
+
+        results: list[dict] = []
+        for cid, members in sorted(communities.items()):
+            if len(members) < 2:
+                continue
+
+            # Gather member info
+            titles: list[str] = []
+            domains: set[str] = set()
+            for nid in members:
+                n = await self._db.get_neuron(nid)
+                if n:
+                    title = n.content.split("\n")[0].lstrip("# ").strip()
+                    if title:
+                        titles.append(title)
+                    if n.domain:
+                        domains.add(n.domain)
+
+            # Build summary content
+            domain_str = ", ".join(sorted(domains)) if domains else "mixed"
+            topics_str = ", ".join(titles[:10])
+            if len(titles) > 10:
+                topics_str += f", ... (+{len(titles) - 10} more)"
+
+            content = (
+                f"# Community {cid}: {domain_str}\n\n"
+                f"This cluster covers {len(members)} neurons.\n"
+                f"Key topics: {topics_str}."
+            )
+
+            summary_id = f"cs-{cid:04d}"
+            primary_domain = max(domains, key=lambda d: sum(
+                1 for nid in members
+                if self._graph.nodes.get(nid, {}).get("domain") == d
+            )) if domains else None
+
+            neuron = Neuron(
+                id=summary_id,
+                content=content,
+                type="community_summary",
+                domain=primary_domain,
+            )
+            await self._db.insert_neuron(neuron)
+            self._graph.add_node(neuron.id, type="community_summary", domain=primary_domain)
+            card = Card()
+            self._cards[neuron.id] = card
+            await self._db.upsert_fsrs_card(neuron.id, card.to_json())
+            if self._embedder:
+                await self._embed_neuron(neuron)
+
+            # Link to members
+            for member_id in members:
+                await self.add_synapse(
+                    summary_id, member_id, SynapseType.SUMMARIZES,
+                    confidence=SynapseConfidence.INFERRED,
+                    confidence_score=1.0,
+                )
+
+            results.append({
+                "id": summary_id,
+                "community_id": cid,
+                "member_count": len(members),
+                "domains": sorted(domains),
+                "topics": titles[:10],
+            })
+
+        return results
+
+    # -- Consolidation (sleep) -----------------------------------------------
+
+    def _graph_state_hash(self) -> str:
+        """Compute a SHA256 hash of the current graph state for plan validation."""
+        parts: list[str] = []
+        for nid in sorted(self._graph.nodes):
+            parts.append(nid)
+        for u, v, data in sorted(self._graph.edges(data=True)):
+            parts.append(f"{u}->{v}:{data.get('weight', 0):.4f}")
+        return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
+
+    async def consolidate(
+        self,
+        *,
+        decay_factor: float = 0.8,
+        weight_floor: float | None = None,
+        similarity_threshold: float = 0.85,
+        domain: str | None = None,
+    ) -> dict:
+        """Generate a consolidation plan (dry-run).
+
+        Biologically-inspired 4-phase consolidation:
+        1. SWS (Replay): Discover latent synapses via embedding similarity
+        2. SHY (Downscaling): Decay weights, identify prunable synapses
+        3. REM (Interference): Detect near-duplicate neurons
+        4. Triage: Flag low-value neurons as forget candidates
+
+        Args:
+            decay_factor: Multiply all synapse weights by this (SHY phase).
+            weight_floor: Prune synapses below this. Defaults to plasticity.weight_floor.
+            similarity_threshold: Cosine similarity threshold for latent synapses / duplicates.
+            domain: Optional domain filter (TMR-inspired targeted consolidation).
+
+        Returns:
+            A consolidation plan dict with actions and state_hash.
+        """
+        if weight_floor is None:
+            weight_floor = self.plasticity.weight_floor
+
+        state_hash = self._graph_state_hash()
+
+        # Filter neurons by domain if requested
+        target_nids: set[str] = set()
+        for nid in self._graph.nodes:
+            data = self._graph.nodes[nid]
+            if data.get("domain") == "_meta" or data.get("type") == "community_summary":
+                continue
+            if domain and data.get("domain") != domain:
+                continue
+            target_nids.add(nid)
+
+        # Phase 1: SWS — Discover latent synapses
+        latent_synapses: list[dict] = []
+        if self._embedder and self._db.has_embeddings:
+            existing_edges: set[tuple[str, str]] = set()
+            for u, v in self._graph.edges():
+                existing_edges.add((u, v))
+                existing_edges.add((v, u))
+
+            checked: set[tuple[str, str]] = set()
+            for nid in target_nids:
+                blob = await self._db.get_embedding(nid)
+                if blob is None:
+                    continue
+                neighbors = await self._db.knn_search(blob, limit=10)
+                for neighbor_id, distance in neighbors:
+                    if neighbor_id == nid or neighbor_id not in target_nids:
+                        continue
+                    pair = tuple(sorted([nid, neighbor_id]))
+                    if pair in checked or pair in existing_edges:
+                        continue
+                    checked.add(pair)
+                    # Convert L2 distance to cosine similarity approximation
+                    sim = max(0.0, 1.0 - distance / 2.0)
+                    if sim >= similarity_threshold:
+                        latent_synapses.append({
+                            "pre": pair[0],
+                            "post": pair[1],
+                            "similarity": round(sim, 3),
+                            "action": "add_synapse",
+                            "type": "relates_to",
+                        })
+
+        # Phase 2: SHY — Weight decay + prune
+        decayed_synapses: list[dict] = []
+        prunable_synapses: list[dict] = []
+        all_synapses = await self._db.get_all_synapses()
+        for s in all_synapses:
+            if domain:
+                pre_domain = self._graph.nodes.get(s.pre, {}).get("domain")
+                post_domain = self._graph.nodes.get(s.post, {}).get("domain")
+                if pre_domain != domain and post_domain != domain:
+                    continue
+            new_weight = s.weight * decay_factor
+            if new_weight < weight_floor:
+                prunable_synapses.append({
+                    "pre": s.pre,
+                    "post": s.post,
+                    "type": s.type.value,
+                    "old_weight": round(s.weight, 4),
+                    "new_weight": round(new_weight, 4),
+                    "action": "remove_synapse",
+                })
+            else:
+                decayed_synapses.append({
+                    "pre": s.pre,
+                    "post": s.post,
+                    "type": s.type.value,
+                    "old_weight": round(s.weight, 4),
+                    "new_weight": round(new_weight, 4),
+                    "action": "set_weight",
+                })
+
+        # Identify neurons that would become isolated after pruning
+        pruned_edges = {(p["pre"], p["post"]) for p in prunable_synapses}
+        removable_neurons: list[dict] = []
+        for nid in target_nids:
+            remaining_edges = 0
+            for neighbor in self._graph.predecessors(nid):
+                if (neighbor, nid) not in pruned_edges:
+                    remaining_edges += 1
+            for neighbor in self._graph.successors(nid):
+                if (nid, neighbor) not in pruned_edges:
+                    remaining_edges += 1
+            if remaining_edges == 0 and self._graph.degree(nid) > 0:
+                card = self._cards.get(nid)
+                has_activity = card is not None and card.stability is not None
+                if not has_activity:
+                    removable_neurons.append({
+                        "id": nid,
+                        "action": "remove_neuron",
+                        "reason": "isolated_after_prune_no_activity",
+                    })
+
+        # Phase 3: REM — Near-duplicate detection
+        near_duplicates: list[dict] = []
+        if self._embedder and self._db.has_embeddings:
+            dup_checked: set[tuple[str, str]] = set()
+            for nid in target_nids:
+                blob = await self._db.get_embedding(nid)
+                if blob is None:
+                    continue
+                neighbors = await self._db.knn_search(blob, limit=5)
+                for neighbor_id, distance in neighbors:
+                    if neighbor_id == nid or neighbor_id not in target_nids:
+                        continue
+                    pair = tuple(sorted([nid, neighbor_id]))
+                    if pair in dup_checked:
+                        continue
+                    dup_checked.add(pair)
+                    sim = max(0.0, 1.0 - distance / 2.0)
+                    if sim >= 0.95:
+                        near_duplicates.append({
+                            "neuron_a": pair[0],
+                            "neuron_b": pair[1],
+                            "similarity": round(sim, 3),
+                            "action": "propose_merge",
+                        })
+                    elif sim >= 0.85:
+                        # High similarity but not duplicate — confusable pair
+                        if (pair[0], pair[1]) not in existing_edges:
+                            near_duplicates.append({
+                                "neuron_a": pair[0],
+                                "neuron_b": pair[1],
+                                "similarity": round(sim, 3),
+                                "action": "propose_contrast",
+                            })
+
+        # Phase 4: Triage — forget candidates
+        forget_candidates: list[dict] = []
+        centrality = nx.degree_centrality(self._graph) if self._graph.number_of_nodes() > 1 else {}
+        now = datetime.now(timezone.utc)
+        for nid in target_nids:
+            card = self._cards.get(nid)
+            stability = card.stability if card and card.stability else 0.0
+            cent = centrality.get(nid, 0.0)
+            # Low stability + low centrality + old = forget candidate
+            n = await self._db.get_neuron(nid)
+            if n is None:
+                continue
+            age_days = (now - n.created_at).days
+            if stability < 1.0 and cent < 0.1 and age_days > 30:
+                forget_candidates.append({
+                    "id": nid,
+                    "stability": round(stability, 2),
+                    "centrality": round(cent, 3),
+                    "age_days": age_days,
+                    "action": "flag_forget",
+                })
+
+        return {
+            "state_hash": state_hash,
+            "domain": domain,
+            "params": {
+                "decay_factor": decay_factor,
+                "weight_floor": weight_floor,
+                "similarity_threshold": similarity_threshold,
+            },
+            "sws": {"latent_synapses": latent_synapses},
+            "shy": {
+                "decayed": decayed_synapses,
+                "prunable": prunable_synapses,
+                "removable_neurons": removable_neurons,
+            },
+            "rem": {"near_duplicates": near_duplicates},
+            "triage": {"forget_candidates": forget_candidates},
+            "summary": {
+                "latent_synapses": len(latent_synapses),
+                "weight_decays": len(decayed_synapses),
+                "prunable_synapses": len(prunable_synapses),
+                "removable_neurons": len(removable_neurons),
+                "near_duplicates": len(near_duplicates),
+                "forget_candidates": len(forget_candidates),
+            },
+        }
+
+    async def apply_consolidation(self, plan: dict) -> dict:
+        """Apply a consolidation plan. Validates state hash first.
+
+        Args:
+            plan: A plan dict from consolidate().
+
+        Returns:
+            Summary of applied actions.
+
+        Raises:
+            ValueError: If the current graph state doesn't match the plan's hash.
+        """
+        self._guard_readonly()
+        current_hash = self._graph_state_hash()
+        if current_hash != plan["state_hash"]:
+            raise ValueError(
+                f"Brain state has changed since plan was generated. "
+                f"Plan hash: {plan['state_hash']}, current: {current_hash}. "
+                f"Re-run 'spkt consolidate' to generate a fresh plan."
+            )
+
+        applied = {
+            "synapses_added": 0,
+            "weights_decayed": 0,
+            "synapses_pruned": 0,
+            "neurons_removed": 0,
+        }
+
+        # Phase 1: Add latent synapses
+        for ls in plan["sws"]["latent_synapses"]:
+            try:
+                await self.add_synapse(
+                    ls["pre"], ls["post"],
+                    SynapseType(ls["type"]),
+                    confidence=SynapseConfidence.INFERRED,
+                    confidence_score=ls["similarity"],
+                )
+                applied["synapses_added"] += 1
+            except (ValueError, KeyError):
+                pass  # Skip if neurons no longer exist
+
+        # Phase 2: Decay weights + prune
+        for ds in plan["shy"]["decayed"]:
+            try:
+                await self.set_synapse_weight(
+                    ds["pre"], ds["post"], SynapseType(ds["type"]), ds["new_weight"]
+                )
+                applied["weights_decayed"] += 1
+            except (ValueError, KeyError):
+                pass
+
+        for ps in plan["shy"]["prunable"]:
+            try:
+                await self.remove_synapse(ps["pre"], ps["post"], SynapseType(ps["type"]))
+                applied["synapses_pruned"] += 1
+            except (ValueError, KeyError):
+                pass
+
+        for rn in plan["shy"]["removable_neurons"]:
+            try:
+                await self.remove_neuron(rn["id"])
+                applied["neurons_removed"] += 1
+            except (ValueError, KeyError):
+                pass
+
+        return applied
+
     # -- Stats --------------------------------------------------------------
 
     async def stats(self) -> dict[str, object]:
@@ -881,4 +1608,504 @@ class Circuit:
             "graph_density": nx.density(self._graph) if neuron_count > 1 else 0.0,
             "cards_loaded": len(self._cards),
             "communities": len(set(cmap.values())) if cmap else 0,
+        }
+
+    # -- Diagnostics ----------------------------------------------------------
+
+    async def diagnose(
+        self,
+        *,
+        weak_synapse_threshold: float = 0.2,
+    ) -> dict:
+        """Run read-only brain health diagnostics.
+
+        Returns a structured dict with all health metrics:
+        orphans, weak_synapses, domain_balance, community_cohesion,
+        bridge_gaps, dangling_prerequisites, source_freshness,
+        surprise_bridges.
+        """
+        g = self._graph
+
+        # -- Orphan neurons: degree == 0 -----------------------------------
+        orphans = [nid for nid in g.nodes if g.degree(nid) == 0]
+
+        # -- Weak synapses -------------------------------------------------
+        weak_synapses = []
+        for u, v, data in g.edges(data=True):
+            w = data.get("weight", 0.5)
+            if w < weak_synapse_threshold:
+                weak_synapses.append({
+                    "pre": u, "post": v,
+                    "type": data.get("type", "relates_to"),
+                    "weight": w,
+                })
+
+        # -- Domain balance ------------------------------------------------
+        domain_counts: dict[str, int] = {}
+        for nid in g.nodes:
+            d = g.nodes[nid].get("domain") or "(none)"
+            domain_counts[d] = domain_counts.get(d, 0) + 1
+        total_neurons = g.number_of_nodes()
+        domain_balance = {
+            "counts": domain_counts,
+            "total": total_neurons,
+        }
+        if total_neurons > 0 and len(domain_counts) > 1:
+            max_c = max(domain_counts.values())
+            min_c = min(domain_counts.values())
+            domain_balance["imbalance_ratio"] = max_c / min_c if min_c > 0 else float("inf")
+        else:
+            domain_balance["imbalance_ratio"] = 1.0
+
+        # -- Community cohesion --------------------------------------------
+        cmap = self.community_map()
+        community_groups: dict[int, set[str]] = {}
+        for nid, cid in cmap.items():
+            community_groups.setdefault(cid, set()).add(nid)
+
+        intra_edges = 0
+        inter_edges = 0
+        for u, v in g.edges:
+            cu = cmap.get(u)
+            cv = cmap.get(v)
+            if cu is not None and cv is not None:
+                if cu == cv:
+                    intra_edges += 1
+                else:
+                    inter_edges += 1
+
+        total_community_edges = intra_edges + inter_edges
+        community_cohesion = {
+            "communities": len(community_groups),
+            "intra_edges": intra_edges,
+            "inter_edges": inter_edges,
+            "cohesion_ratio": (
+                intra_edges / total_community_edges
+                if total_community_edges > 0 else 0.0
+            ),
+        }
+
+        # -- Bridge gaps: communities with no cross-community edges --------
+        communities_with_bridges: set[int] = set()
+        for u, v in g.edges:
+            cu = cmap.get(u)
+            cv = cmap.get(v)
+            if cu is not None and cv is not None and cu != cv:
+                communities_with_bridges.add(cu)
+                communities_with_bridges.add(cv)
+        isolated_communities = [
+            cid for cid in community_groups
+            if cid not in communities_with_bridges
+               and len(community_groups[cid]) > 1
+        ]
+
+        # -- Dangling prerequisites ----------------------------------------
+        dangling_prereqs = []
+        for u, v, data in g.edges(data=True):
+            if data.get("type") == "requires":
+                # u requires v — check if v is very weak
+                card = self.get_card(v)
+                if card is None:
+                    dangling_prereqs.append({
+                        "neuron": u, "requires": v,
+                        "reason": "no_card",
+                    })
+                elif card.stability is None:
+                    # Never reviewed — stability not yet assigned
+                    dangling_prereqs.append({
+                        "neuron": u, "requires": v,
+                        "reason": "never_reviewed",
+                    })
+                elif card.stability < 1.0:
+                    dangling_prereqs.append({
+                        "neuron": u, "requires": v,
+                        "reason": "low_stability",
+                        "stability": card.stability,
+                    })
+
+        # -- Source freshness ----------------------------------------------
+        sources = await self.list_sources(limit=100_000)
+        source_stats = {
+            "total": len(sources),
+            "url_sources": 0,
+            "unreachable": 0,
+            "never_fetched": 0,
+        }
+        for s in sources:
+            if s.url and s.url.startswith(("http://", "https://")):
+                source_stats["url_sources"] += 1
+                if s.status == "unreachable":
+                    source_stats["unreachable"] += 1
+                if s.fetched_at is None:
+                    source_stats["never_fetched"] += 1
+
+        # -- Surprise bridges: cross-community edges scored by rarity ------
+        surprise_bridges = []
+        if community_groups and inter_edges > 0:
+            # Score = 1 / min(size_a, size_b) — smaller communities are more surprising
+            for u, v, data in g.edges(data=True):
+                cu = cmap.get(u)
+                cv = cmap.get(v)
+                if cu is not None and cv is not None and cu != cv:
+                    size_a = len(community_groups[cu])
+                    size_b = len(community_groups[cv])
+                    surprise = 1.0 / min(size_a, size_b)
+                    surprise_bridges.append({
+                        "pre": u, "post": v,
+                        "type": data.get("type", "relates_to"),
+                        "communities": [cu, cv],
+                        "surprise_score": round(surprise, 4),
+                    })
+            surprise_bridges.sort(key=lambda x: x["surprise_score"], reverse=True)
+            surprise_bridges = surprise_bridges[:20]  # Top 20
+
+        return {
+            "orphans": orphans,
+            "weak_synapses": weak_synapses,
+            "domain_balance": domain_balance,
+            "community_cohesion": community_cohesion,
+            "isolated_communities": isolated_communities,
+            "dangling_prerequisites": dangling_prereqs,
+            "source_freshness": source_stats,
+            "surprise_bridges": surprise_bridges,
+        }
+
+    async def domain_audit(self) -> dict:
+        """Analyze domain ↔ community alignment and suggest actions.
+
+        Compares the user-assigned domain labels against the graph's
+        natural community structure (Louvain) to find mismatches:
+
+        - **split**: a domain spans multiple communities → suggest sub-domains
+        - **merge**: multiple domains converge in one community → suggest merging
+        - **rename**: keyword extraction hints at a better name
+
+        Returns a dict with domain_map, community_map, suggestions[].
+        """
+        from collections import Counter
+        import math
+
+        g = self._graph
+        cmap = self.community_map()
+
+        # -- Build mappings ------------------------------------------------
+        # domain → {community_id: [neuron_ids]}
+        domain_to_communities: dict[str, dict[int, list[str]]] = {}
+        # community → {domain: [neuron_ids]}
+        community_to_domains: dict[int, dict[str, list[str]]] = {}
+
+        for nid in g.nodes:
+            data = g.nodes[nid]
+            dom = data.get("domain") or "(none)"
+            if dom == "_meta":
+                continue
+            if data.get("type") == "community_summary":
+                continue
+            cid = cmap.get(nid)
+            if cid is None:
+                continue
+
+            domain_to_communities.setdefault(dom, {}).setdefault(cid, []).append(nid)
+            community_to_domains.setdefault(cid, {}).setdefault(dom, []).append(nid)
+
+        # -- Pre-fetch neuron content for keyword extraction ----------------
+        all_node_ids = list(g.nodes)
+        content_map: dict[str, str] = {}
+        for nid in all_node_ids:
+            n = await self.get_neuron(nid)
+            if n is not None:
+                content_map[nid] = n.content
+
+        # -- TF-IDF keyword extraction per community ----------------------
+        def _extract_keywords(
+            neuron_ids: list[str],
+            content_map: dict[str, str],
+            top_n: int = 5,
+        ) -> list[str]:
+            """Simple TF-IDF on neuron titles (first line of content)."""
+            stop = {
+                "the", "a", "an", "is", "are", "was", "were", "be", "been",
+                "to", "of", "in", "for", "on", "with", "at", "by", "from",
+                "and", "or", "not", "no", "but", "if", "so", "as", "it",
+                "this", "that", "its", "than", "has", "have", "had", "do",
+                "does", "did", "will", "would", "can", "could", "may",
+                "shall", "should", "must", "need", "about", "into", "over",
+                "such", "also", "each", "which", "their", "these", "those",
+                "de", "la", "le", "les", "un", "une", "des", "du", "et",
+                "en", "est", "que", "qui", "dans", "pour", "sur", "avec",
+                "の", "は", "が", "を", "に", "で", "と", "も", "から",
+            }
+
+            # Term freq per document (neuron)
+            doc_tfs: list[Counter] = []
+            all_terms: Counter = Counter()
+            for nid in neuron_ids:
+                content = content_map.get(nid, "")
+                title = content.split("\n")[0].strip("# ").strip() if content else ""
+                words = [
+                    w.lower().strip(".,;:!?()[]{}\"'`")
+                    for w in title.split()
+                    if len(w) > 1
+                ]
+                words = [w for w in words if w and w not in stop]
+                tf = Counter(words)
+                doc_tfs.append(tf)
+                all_terms.update(set(words))  # DF: count each term once per doc
+
+            n_docs = len(doc_tfs)
+            if n_docs == 0:
+                return []
+
+            # TF-IDF score per term
+            scores: Counter = Counter()
+            for tf in doc_tfs:
+                for term, count in tf.items():
+                    df = all_terms[term]
+                    idf = math.log(n_docs / df) if df > 0 else 0
+                    scores[term] += count * idf
+
+            return [term for term, _ in scores.most_common(top_n)]
+
+        community_keywords: dict[int, list[str]] = {}
+        for cid, dom_map in community_to_domains.items():
+            all_nids = [nid for nids in dom_map.values() for nid in nids]
+            community_keywords[cid] = _extract_keywords(all_nids, content_map)
+
+        # -- Generate suggestions ------------------------------------------
+        suggestions: list[dict] = []
+
+        # Split: domain spans 2+ communities with significant presence in each
+        for dom, comm_map in domain_to_communities.items():
+            if len(comm_map) < 2:
+                continue
+            total = sum(len(nids) for nids in comm_map.values())
+            # Only suggest split if at least 2 communities have ≥20% of the domain
+            significant = {
+                cid: nids for cid, nids in comm_map.items()
+                if len(nids) / total >= 0.2
+            }
+            if len(significant) >= 2:
+                communities_info = []
+                for cid, nids in significant.items():
+                    communities_info.append({
+                        "community": cid,
+                        "count": len(nids),
+                        "keywords": community_keywords.get(cid, []),
+                    })
+                suggestions.append({
+                    "action": "split",
+                    "domain": dom,
+                    "total_neurons": total,
+                    "communities": communities_info,
+                })
+
+        # Merge: multiple domains in same community
+        for cid, dom_map in community_to_domains.items():
+            if len(dom_map) < 2:
+                continue
+            total_in_community = sum(len(nids) for nids in dom_map.values())
+            # Only suggest merge if all domains in this community are small enough
+            # to be considered fragments of a single topic
+            domains_here = []
+            for dom, nids in dom_map.items():
+                pct = len(nids) / total_in_community
+                domains_here.append({
+                    "domain": dom,
+                    "count": len(nids),
+                    "pct_of_community": round(pct, 2),
+                })
+            # Suggest merge if no single domain dominates (>80%)
+            max_pct = max(d["pct_of_community"] for d in domains_here)
+            if max_pct <= 0.8:
+                suggestions.append({
+                    "action": "merge",
+                    "community": cid,
+                    "keywords": community_keywords.get(cid, []),
+                    "domains": domains_here,
+                })
+
+        # -- Domain stats summary ------------------------------------------
+        domain_summary = []
+        for dom, comm_map in sorted(domain_to_communities.items()):
+            total = sum(len(nids) for nids in comm_map.values())
+            communities = sorted(comm_map.keys())
+            domain_summary.append({
+                "domain": dom,
+                "neuron_count": total,
+                "communities": communities,
+                "spread": len(communities),
+            })
+
+        return {
+            "domains": domain_summary,
+            "community_keywords": {
+                str(cid): kws for cid, kws in community_keywords.items()
+            },
+            "suggestions": suggestions,
+        }
+
+    async def progress(
+        self,
+        *,
+        domain: str | None = None,
+    ) -> dict:
+        """Generate a learner-focused progress report.
+
+        Returns per-domain mastery, retention rate, learning velocity,
+        weak spots, and review adherence.
+        """
+        import math
+        from collections import defaultdict
+
+        g = self._graph
+        now = datetime.now(timezone.utc)
+
+        # Gather neurons (optionally filtered by domain)
+        all_neurons = await self.list_neurons(limit=100_000)
+        if domain:
+            neurons = [n for n in all_neurons if n.domain == domain]
+        else:
+            neurons = all_neurons
+
+        neuron_ids = {n.id for n in neurons}
+
+        # -- Per-domain mastery ------------------------------------------------
+        domain_stats: dict[str, dict] = defaultdict(lambda: {
+            "count": 0,
+            "stabilities": [],
+            "retrievabilities": [],
+        })
+        for n in neurons:
+            d = n.domain or "(none)"
+            card = self.get_card(n.id)
+            domain_stats[d]["count"] += 1
+            if card and card.stability is not None:
+                domain_stats[d]["stabilities"].append(card.stability)
+                # Retrievability = exp(-elapsed / stability)
+                elapsed = (now - card.due).total_seconds() / 86400 + card.stability
+                if card.stability > 0:
+                    r = math.exp(-max(0, elapsed - card.stability) / card.stability)
+                    domain_stats[d]["retrievabilities"].append(r)
+
+        mastery = {}
+        for d, stats in domain_stats.items():
+            stabs = stats["stabilities"]
+            rets = stats["retrievabilities"]
+            mastery[d] = {
+                "neuron_count": stats["count"],
+                "avg_stability": round(sum(stabs) / len(stabs), 2) if stabs else None,
+                "avg_retrievability": round(sum(rets) / len(rets), 3) if rets else None,
+                "reviewed_count": len(stabs),
+            }
+
+        # -- Retention rate (from spike history) --------------------------------
+        # Query all spikes for these neurons
+        rows = await self._db.conn.execute_fetchall(
+            "SELECT neuron_id, grade FROM spike"
+        )
+        total_fires = 0
+        success_fires = 0
+        domain_retention: dict[str, dict] = defaultdict(lambda: {"total": 0, "success": 0})
+
+        neuron_domain_map = {n.id: (n.domain or "(none)") for n in neurons}
+        for row in rows:
+            nid = row["neuron_id"]
+            if nid not in neuron_ids:
+                continue
+            total_fires += 1
+            d = neuron_domain_map.get(nid, "(none)")
+            domain_retention[d]["total"] += 1
+            # Grade: 1=miss, 2=weak, 3=fire, 4=strong (FSRS Rating values)
+            grade_val = row["grade"]
+            if grade_val >= 3:  # fire or strong
+                success_fires += 1
+                domain_retention[d]["success"] += 1
+
+        retention = {
+            "overall": round(success_fires / total_fires, 3) if total_fires > 0 else None,
+            "total_reviews": total_fires,
+            "per_domain": {
+                d: round(v["success"] / v["total"], 3) if v["total"] > 0 else None
+                for d, v in domain_retention.items()
+            },
+        }
+
+        # -- Learning velocity -------------------------------------------------
+        # Neurons added per week (last 4 weeks)
+        weekly_counts: list[dict] = []
+        for weeks_ago in range(4):
+            week_end = now - timedelta(weeks=weeks_ago)
+            week_start = week_end - timedelta(weeks=1)
+            count = sum(
+                1 for n in neurons
+                if hasattr(n, "created_at") and n.created_at
+                and week_start <= n.created_at <= week_end
+            )
+            week_label = week_start.strftime("%Y-%m-%d")
+            weekly_counts.append({"week_of": week_label, "added": count})
+        weekly_counts.reverse()  # oldest first
+
+        velocity = {
+            "weekly": weekly_counts,
+            "total_neurons": len(neurons),
+        }
+
+        # -- Weak spots (low stability + high centrality) ---------------------
+        centrality_map: dict[str, float] = {}
+        if g.number_of_nodes() > 1:
+            centrality_map = nx.degree_centrality(g)
+
+        weak_spots = []
+        for n in neurons:
+            card = self.get_card(n.id)
+            if card is None or card.stability is None:
+                # Never reviewed — include if it has connections
+                centrality = centrality_map.get(n.id, 0.0)
+                if centrality > 0:
+                    weak_spots.append({
+                        "id": n.id,
+                        "domain": n.domain,
+                        "stability": None,
+                        "centrality": round(centrality, 4),
+                        "reason": "never_reviewed",
+                    })
+            elif card.stability < 5.0:
+                centrality = centrality_map.get(n.id, 0.0)
+                if centrality > 0:
+                    weak_spots.append({
+                        "id": n.id,
+                        "domain": n.domain,
+                        "stability": round(card.stability, 2),
+                        "centrality": round(centrality, 4),
+                        "reason": "low_stability",
+                    })
+
+        # Sort by centrality desc (most important weak spots first)
+        weak_spots.sort(key=lambda x: x["centrality"], reverse=True)
+        weak_spots = weak_spots[:20]
+
+        # -- Review adherence --------------------------------------------------
+        # % of due neurons that were reviewed (have at least one spike)
+        due_ids = await self.due_neurons(limit=100_000)
+        due_in_scope = [nid for nid in due_ids if nid in neuron_ids]
+        reviewed_neurons = {n.id for n in neurons if self.get_card(n.id) and self.get_card(n.id).stability is not None}
+        total_with_cards = len([n for n in neurons if self.get_card(n.id)])
+        overdue = len(due_in_scope)
+
+        adherence = {
+            "total_neurons": len(neurons),
+            "reviewed_at_least_once": len(reviewed_neurons),
+            "currently_overdue": overdue,
+            "adherence_rate": round(
+                len(reviewed_neurons) / total_with_cards, 3
+            ) if total_with_cards > 0 else None,
+        }
+
+        return {
+            "domain_filter": domain,
+            "mastery": mastery,
+            "retention": retention,
+            "velocity": velocity,
+            "weak_spots": weak_spots,
+            "adherence": adherence,
         }

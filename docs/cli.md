@@ -63,16 +63,16 @@ spkt embed-all              # Interactive — shows plan, asks for confirmation
 spkt embed-all --yes        # Skip confirmation
 ```
 
-## Knowledge Management
+## Neuron Commands
 
-### `spkt add`
+### `spkt neuron add`
 
 Add a new Neuron to the circuit.
 
 ```bash
-spkt add "# Functor\n\nA mapping between categories." -t concept -d math
-spkt add "Content here" --type fact --domain physics
-spkt add "Content" -t concept --source-url "https://example.com/paper.pdf" --source-title "A Paper"
+spkt neuron add "# Functor\n\nA mapping between categories." -t concept -d math
+spkt neuron add "Content here" --type fact --domain physics
+spkt neuron add "Content" -t concept --source-url "https://example.com/paper.pdf" --source-title "A Paper"
 ```
 
 | Option | Description |
@@ -82,62 +82,76 @@ spkt add "Content" -t concept --source-url "https://example.com/paper.pdf" --sou
 | `--source-url` | Source URL for citation tracking |
 | `--source-title` | Source title (used with `--source-url`) |
 
-### `spkt list`
+### `spkt neuron list`
 
-List neurons with optional filters. Also supports metadata and domain discovery.
+List neurons with optional filters. Also supports metadata discovery.
 
 ```bash
-spkt list
-spkt list -t concept -d math
-spkt list --limit 50
+spkt neuron list
+spkt neuron list -t concept -d math
+spkt neuron list --limit 50
 
 # Metadata discovery
-spkt list --meta-keys --json          # All filterable/searchable keys across sources
-spkt list --meta-values year --json   # Distinct values for a key (with counts)
-spkt list --domains --json            # All domains with neuron counts
+spkt neuron list --meta-keys --json          # All filterable/searchable keys across sources
+spkt neuron list --meta-values year --json   # Distinct values for a key (with counts)
 ```
 
 | Option | Description |
 |--------|-------------|
+| `-t`, `--type` | Filter by neuron type |
+| `-d`, `--domain` | Filter by domain |
+| `--limit` | Max results |
 | `--meta-keys` | List all metadata keys (filterable + searchable) |
 | `--meta-values KEY` | List distinct values for a metadata key |
-| `--domains` | List all domains with neuron counts |
 
-### `spkt inspect`
+### `spkt neuron inspect`
 
 Show detailed information about a neuron: content, FSRS state,
 pressure, sources, community, and connected synapses.
 
 ```bash
-spkt inspect <neuron-id>
-spkt inspect <neuron-id> --json    # includes sources[] and community_id
+spkt neuron inspect <neuron-id>
+spkt neuron inspect <neuron-id> --json    # includes sources[] and community_id
 ```
 
-### `spkt link`
+### `spkt neuron remove`
 
-Create a synapse between two neurons.
+Remove a neuron and all its synapses.
 
 ```bash
-spkt link <pre-id> <post-id> --type requires
-spkt link <a-id> <b-id> --type relates_to
+spkt neuron remove <neuron-id>
+spkt neuron remove <neuron-id> --json
 ```
 
-| Type | Direction | Use |
-|------|-----------|-----|
-| `requires` | Directed | A requires understanding B |
-| `extends` | Directed | A extends B |
-| `contrasts` | Bidirectional | A contrasts with B |
-| `relates_to` | Bidirectional | General association |
+### `spkt neuron merge`
 
-## Review
-
-### `spkt fire`
-
-Record a review event (fire a spike).
+Merge multiple neurons into one. Content is concatenated, synapses are
+redirected to the target, source attachments are transferred, and the
+target is re-embedded.
 
 ```bash
-spkt fire <neuron-id> --grade fire
-spkt fire <neuron-id> -g strong
+spkt neuron merge <source-id-1> <source-id-2> --into <target-id>
+spkt neuron merge <id1> <id2> <id3> --into <target-id> --json
+```
+
+### `spkt neuron due`
+
+Show neurons due for review. Excludes auto-generated neurons
+(`_meta` domain and `community_summary` type).
+
+```bash
+spkt neuron due
+spkt neuron due -n 20
+spkt neuron due --json
+```
+
+### `spkt neuron fire`
+
+Record a review event (fire a spike). Cannot be used on auto-generated neurons.
+
+```bash
+spkt neuron fire <neuron-id> --grade fire
+spkt neuron fire <neuron-id> -g strong
 ```
 
 | Grade | Meaning | FSRS Rating |
@@ -147,42 +161,72 @@ spkt fire <neuron-id> -g strong
 | `fire` | Correct | Good |
 | `strong` | Perfect | Easy |
 
-### `spkt due`
+## Synapse Commands
 
-Show neurons due for review.
+### `spkt synapse add`
 
-```bash
-spkt due
-spkt due -n 20
-spkt due --json
-```
-
-### `spkt quiz`
-
-Interactive flashcard review session. Presents due neurons with
-scaffold-adaptive content and accepts self-grading.
+Create a synapse between two neurons.
 
 ```bash
-spkt quiz
-spkt quiz --limit 10
+spkt synapse add <pre-id> <post-id> --type requires
+spkt synapse add <a-id> <b-id> --type relates_to
 ```
 
-## Source Ingestion
+| Type | Direction | Use |
+|------|-----------|-----|
+| `requires` | Directed | A requires understanding B |
+| `extends` | Directed | A extends B |
+| `contrasts` | Bidirectional | A contrasts with B |
+| `relates_to` | Bidirectional | General association |
+| `summarizes` | Directed | Community summary → member |
 
-### `spkt learn`
+### `spkt synapse list`
+
+List synapses with optional filters.
+
+```bash
+spkt synapse list
+spkt synapse list --neuron <neuron-id>     # Synapses connected to a neuron
+spkt synapse list --type requires          # Filter by type
+spkt synapse list --json
+```
+
+Output includes confidence tags (`[inferred]`, `[ambiguous]`) when applicable.
+
+### `spkt synapse weight`
+
+Set the weight of an existing synapse.
+
+```bash
+spkt synapse weight <pre-id> <post-id> 0.8
+spkt synapse weight <pre-id> <post-id> 0.5 --json
+```
+
+### `spkt synapse remove`
+
+Remove a synapse between two neurons.
+
+```bash
+spkt synapse remove <pre-id> <post-id>
+spkt synapse remove <pre-id> <post-id> --json
+```
+
+## Source Commands
+
+### `spkt source learn`
 
 Ingest a URL, file, or directory. Creates Source records, extracts content,
 and outputs it for agent-driven chunking.
 
 ```bash
 # Single URL
-spkt learn "https://example.com/article" -d cs --json
+spkt source learn "https://example.com/article" -d cs --json
 
 # Single file
-spkt learn ./notes.md -d math --json
+spkt source learn ./notes.md -d math --json
 
 # Directory (batch ingestion)
-spkt learn ./papers/ -d cs --json
+spkt source learn ./papers/ -d cs --json
 ```
 
 | Option | Description |
@@ -201,54 +245,6 @@ from the directory. Place a `metadata.jsonl` sidecar file to attach metadata:
 
 If any file's searchable metadata exceeds `max_searchable_chars` (default: 500),
 the command aborts with a per-file report. Use `--force` to truncate instead.
-
-## Communities
-
-### `spkt communities`
-
-Show or detect communities (clusters) in the knowledge graph
-using the Louvain algorithm.
-
-```bash
-spkt communities                   # Show current communities
-spkt communities --detect          # Force re-detection
-spkt communities --detect -r 2.0   # Higher resolution = more communities
-spkt communities --json            # Machine-readable output
-```
-
-## Search
-
-### `spkt retrieve`
-
-Graph-weighted search combining keyword matching, semantic similarity,
-FSRS retrievability, graph centrality, and review pressure.
-
-```bash
-spkt retrieve "category theory"
-spkt retrieve "functor" --limit 5
-
-# Filtered retrieval
-spkt retrieve "attention" --filter year=2017
-spkt retrieve "GNN" --filter domain=cs --filter venue=NeurIPS
-```
-
-| Option | Description |
-|--------|-------------|
-| `--limit`, `-n` | Max results (default: 10) |
-| `--filter KEY=VALUE` | Filter by neuron field (`type`, `domain`) or source filterable metadata. Repeatable. Strict: missing key = excluded. |
-
-## Visualization
-
-### `spkt visualize`
-
-Generate an interactive HTML graph visualization.
-
-```bash
-spkt visualize
-spkt visualize -o my-graph.html
-```
-
-## Source Management
 
 ### `spkt source list`
 
@@ -277,7 +273,30 @@ spkt source update <source-id> --url "https://new-url.com"
 spkt source update <source-id> --title "New Title" --author "Author Name"
 ```
 
-## Domain Management
+### `spkt source refresh`
+
+Re-fetch URL sources to check for content changes. Uses conditional GET
+(ETag / Last-Modified) to minimize bandwidth. Updated content triggers
+re-embedding of affected neurons.
+
+```bash
+spkt source refresh <source-id>          # Refresh a specific source
+spkt source refresh --stale 30           # Refresh sources not fetched in 30+ days
+spkt source refresh --all                # Refresh all URL sources
+```
+
+Sources returning 404 are flagged as `unreachable`.
+
+## Domain Commands
+
+### `spkt domain list`
+
+List all domains with neuron counts.
+
+```bash
+spkt domain list
+spkt domain list --json
+```
 
 ### `spkt domain rename`
 
@@ -295,21 +314,153 @@ Merge multiple domains into one.
 spkt domain merge domain1 domain2 --into target-domain
 ```
 
-## Source Freshness
+### `spkt domain audit`
 
-### `spkt refresh`
+Analyze domain ↔ community alignment. Compares user-assigned domain labels
+against the graph's natural community structure to find mismatches:
 
-Re-fetch URL sources to check for content changes. Uses conditional GET
-(ETag / Last-Modified) to minimize bandwidth. Updated content triggers
-re-embedding of affected neurons.
+- **Split**: a domain spans multiple communities (suggest sub-domains)
+- **Merge**: multiple domains converge in one community (suggest merging)
+
+Includes TF-IDF keyword extraction per community for naming hints.
 
 ```bash
-spkt refresh <source-id>          # Refresh a specific source
-spkt refresh --stale 30           # Refresh sources not fetched in 30+ days
-spkt refresh --all                # Refresh all URL sources
+spkt domain audit
+spkt domain audit --json
 ```
 
-Sources returning 404 are flagged as `unreachable`.
+## Community Commands
+
+### `spkt community detect`
+
+Run community detection using the Louvain algorithm.
+
+```bash
+spkt community detect
+spkt community detect -r 2.0              # Higher resolution = more communities
+spkt community detect --summarize          # Also generate summary neurons per community
+spkt community detect --json
+```
+
+### `spkt community list`
+
+Show current community assignments.
+
+```bash
+spkt community list
+spkt community list --json
+```
+
+## Search
+
+### `spkt retrieve`
+
+Graph-weighted search combining keyword matching, semantic similarity,
+FSRS retrievability, graph centrality, and review pressure.
+
+```bash
+spkt retrieve "category theory"
+spkt retrieve "functor" --limit 5
+
+# Filtered retrieval
+spkt retrieve "attention" --filter year=2017
+spkt retrieve "GNN" --filter domain=cs --filter venue=NeurIPS
+```
+
+| Option | Description |
+|--------|-------------|
+| `--limit`, `-n` | Max results (default: 10) |
+| `--filter KEY=VALUE` | Filter by neuron field (`type`, `domain`) or source filterable metadata. Repeatable. Strict: missing key = excluded. |
+
+## Review
+
+### `spkt quiz`
+
+Interactive flashcard review session. Presents due neurons with
+scaffold-adaptive content and accepts self-grading.
+
+```bash
+spkt quiz
+spkt quiz --limit 10
+```
+
+## Brain Health & Insights
+
+### `spkt stats`
+
+Show circuit statistics: neuron count, synapse count, graph density.
+
+```bash
+spkt stats
+spkt stats --json
+```
+
+### `spkt diagnose`
+
+Run brain health diagnostics. Detects orphan neurons, weak synapses,
+overdue reviews, and other potential issues.
+
+```bash
+spkt diagnose
+spkt diagnose --json
+```
+
+### `spkt progress`
+
+Generate a learning progress report. Shows review activity, retention rates,
+domain coverage, and growth trends.
+
+```bash
+spkt progress
+spkt progress --format html -o progress.html
+spkt progress --json
+```
+
+### `spkt manual`
+
+Auto-generate a user guide from the brain's contents: domains, topics,
+review cutoffs, and sources.
+
+```bash
+spkt manual
+spkt manual --format html -o manual.html
+spkt manual --write-meta                   # Also write guide as _meta neurons
+spkt manual --json
+```
+
+## Consolidation
+
+### `spkt consolidate`
+
+Sleep-inspired knowledge consolidation. Analyzes the brain and generates
+a plan to prune weak synapses, decay unused connections, and tighten the graph.
+
+```bash
+spkt consolidate                           # Dry-run — shows the plan
+spkt consolidate --domain math             # Limit to a domain
+spkt consolidate --json
+```
+
+### `spkt consolidate apply`
+
+Apply a consolidation plan. Validates the plan against the current graph
+state (hash check) to ensure nothing has changed since the plan was generated.
+
+```bash
+spkt consolidate apply                     # Apply after reviewing the dry-run
+spkt consolidate apply --json
+```
+
+## Visualization
+
+### `spkt visualize`
+
+Generate an interactive HTML graph visualization.
+
+```bash
+spkt visualize
+spkt visualize -o my-graph.html
+```
 
 ## Export / Import
 
@@ -347,13 +498,19 @@ Import a tarball backup.
 spkt import backup.tar.gz
 ```
 
-## Statistics
+## Deprecated Commands
 
-### `spkt stats`
+Old flat commands still work but show deprecation warnings on stderr.
+Use the resource-oriented form above.
 
-Show circuit statistics: neuron count, synapse count, graph density.
-
-```bash
-spkt stats
-spkt stats --json
-```
+| Old command | New command |
+|-------------|------------|
+| `spkt add` | `spkt neuron add` |
+| `spkt list` | `spkt neuron list` |
+| `spkt inspect` | `spkt neuron inspect` |
+| `spkt fire` | `spkt neuron fire` |
+| `spkt due` | `spkt neuron due` |
+| `spkt link` | `spkt synapse add` |
+| `spkt learn` | `spkt source learn` |
+| `spkt refresh` | `spkt source refresh` |
+| `spkt communities` | `spkt community list` / `spkt community detect` |

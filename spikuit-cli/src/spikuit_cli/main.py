@@ -2,17 +2,36 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
+import struct
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 import typer
 
-from spikuit_core import Circuit, Flashcard, Grade, Neuron, Plasticity, Source, Spike, SynapseType
+from spikuit_core import Circuit, Flashcard, Grade, Neuron, Source, SynapseType
 from spikuit_core.config import BrainConfig, find_spikuit_root, init_brain, load_config
 from spikuit_core.embedder import create_embedder
+
+from .commands import (
+    community_app,
+    domain_app,
+    neuron_app,
+    skills_app,
+    source_app,
+    synapse_app,
+)
+from .commands.skills import install_agent_skills
+from .helpers import (
+    _GRADE_MAP,
+    _extract_title,
+    _get_circuit,
+    _load_brain_config,
+    _neuron_dict,
+    _out,
+    _run,
+)
 
 app = typer.Typer(
     name="spkt",
@@ -20,66 +39,13 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
-
-def _load_brain_config(brain: Path | None = None) -> BrainConfig:
-    """Load config from .spikuit/ or use explicit brain root."""
-    return load_config(brain)
-
-
-def _get_circuit(brain: Path | None = None) -> Circuit:
-    """Create a Circuit from brain config."""
-    config = load_config(brain)
-    embedder = create_embedder(
-        config.embedder.provider,
-        base_url=config.embedder.base_url,
-        model=config.embedder.model,
-        dimension=config.embedder.dimension,
-        api_key=config.embedder.api_key,
-        timeout=config.embedder.timeout,
-        prefix_style=config.embedder.prefix_style,
-    )
-    return Circuit(db_path=config.db_path, embedder=embedder)
-
-
-def _run(coro):
-    """Run an async coroutine synchronously."""
-    return asyncio.run(coro)
-
-
-def _out(data: object, *, use_json: bool) -> None:
-    """Output data as JSON or human-readable text."""
-    if use_json:
-        typer.echo(json.dumps(data, ensure_ascii=False, default=str))
-    elif isinstance(data, str):
-        typer.echo(data)
-    elif isinstance(data, list):
-        for item in data:
-            typer.echo(item)
-    elif isinstance(data, dict):
-        for k, v in data.items():
-            typer.echo(f"{k}: {v}")
-
-
-def _neuron_dict(n: Neuron, circuit: Circuit) -> dict:
-    """Serialize a Neuron + its graph state to a dict."""
-    card = circuit.get_card(n.id)
-    pressure = circuit.get_pressure(n.id)
-    d: dict = {
-        "id": n.id,
-        "title": _extract_title(n.content),
-        "content": n.content,
-        "type": n.type,
-        "domain": n.domain,
-        "pressure": pressure,
-    }
-    if card:
-        d["fsrs"] = {
-            "stability": card.stability,
-            "difficulty": card.difficulty,
-            "state": card.state.name,
-            "due": str(card.due),
-        }
-    return d
+# Register resource sub-apps
+app.add_typer(neuron_app, name="neuron")
+app.add_typer(synapse_app, name="synapse")
+app.add_typer(source_app, name="source")
+app.add_typer(domain_app, name="domain")
+app.add_typer(community_app, name="community")
+app.add_typer(skills_app, name="skills")
 
 
 # -------------------------------------------------------------------
@@ -186,7 +152,7 @@ def init(
         if interactive:
             typer.echo("")
             if typer.confirm("Install skills for an Agent CLI? (/tutor, /learn, /qabot)", default=False):
-                _install_agent_skills(config.root)
+                install_agent_skills(config.root)
 
 
 # -------------------------------------------------------------------
@@ -275,7 +241,6 @@ def embed_all(
             est_tokens = total_chars // 4
 
             if as_json and not yes:
-                # JSON mode with plan — output plan and proceed
                 _out({
                     "plan": {
                         "total_neurons": len(all_neurons),
@@ -284,7 +249,6 @@ def embed_all(
                         "estimated_tokens": est_tokens,
                     }
                 }, use_json=True)
-                # In JSON mode, still require --yes for non-interactive use
                 return
 
             if not yes:
@@ -306,156 +270,6 @@ def embed_all(
             await circuit.close()
 
     _run(_embed_all())
-
-
-# -------------------------------------------------------------------
-# add
-# -------------------------------------------------------------------
-
-
-@app.command()
-def add(
-    content: str = typer.Argument(..., help="Markdown content for the neuron"),
-    type: Optional[str] = typer.Option(None, "--type", "-t", help="Neuron type"),
-    domain: Optional[str] = typer.Option(None, "--domain", "-d", help="Domain tag"),
-    source_url: Optional[str] = typer.Option(None, "--source-url", help="Source URL for citation"),
-    source_title: Optional[str] = typer.Option(None, "--source-title", help="Source title"),
-    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
-    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
-) -> None:
-    """Add a new Neuron to the circuit."""
-
-    async def _add():
-        circuit = _get_circuit(brain)
-        await circuit.connect()
-        try:
-            real_content = content.encode().decode("unicode_escape")
-            neuron = Neuron.create(real_content, type=type, domain=domain)
-            await circuit.add_neuron(neuron)
-
-            # Attach source if URL provided
-            source_attached = None
-            if source_url:
-                existing = await circuit.find_source_by_url(source_url)
-                if existing:
-                    await circuit.attach_source(neuron.id, existing.id)
-                    source_attached = existing
-                else:
-                    src = Source(url=source_url, title=source_title)
-                    await circuit.add_source(src)
-                    await circuit.attach_source(neuron.id, src.id)
-                    source_attached = src
-
-            if as_json:
-                d = _neuron_dict(neuron, circuit)
-                if source_attached:
-                    d["source_id"] = source_attached.id
-                    d["source_url"] = source_attached.url
-                _out(d, use_json=True)
-            else:
-                typer.echo(f"Added neuron {neuron.id}")
-                if source_attached:
-                    typer.echo(f"  source: {source_attached.id} ({source_attached.url})")
-        finally:
-            await circuit.close()
-
-    _run(_add())
-
-
-# -------------------------------------------------------------------
-# fire
-# -------------------------------------------------------------------
-
-_GRADE_MAP = {
-    "miss": Grade.MISS,
-    "weak": Grade.WEAK,
-    "fire": Grade.FIRE,
-    "strong": Grade.STRONG,
-}
-
-
-@app.command()
-def fire(
-    neuron_id: str = typer.Argument(..., help="Neuron ID to fire"),
-    grade: str = typer.Option("fire", "--grade", "-g", help="Grade: miss|weak|fire|strong"),
-    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
-    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
-) -> None:
-    """Fire a spike (record a review) on a Neuron."""
-    g = _GRADE_MAP.get(grade.lower())
-    if g is None:
-        typer.echo(f"Invalid grade: {grade}. Use: miss, weak, fire, strong", err=True)
-        raise typer.Exit(1)
-
-    async def _fire():
-        circuit = _get_circuit(brain)
-        await circuit.connect()
-        try:
-            neuron = await circuit.get_neuron(neuron_id)
-            if neuron is None:
-                typer.echo(f"Neuron {neuron_id} not found", err=True)
-                raise typer.Exit(1)
-            now = datetime.now(timezone.utc)
-            spike = Spike(neuron_id=neuron_id, grade=g, fired_at=now)
-            card = await circuit.fire(spike)
-            if as_json:
-                _out({
-                    "neuron_id": neuron_id,
-                    "grade": grade,
-                    "stability": card.stability,
-                    "difficulty": card.difficulty,
-                    "due": str(card.due),
-                    "state": card.state.name,
-                }, use_json=True)
-            else:
-                typer.echo(f"Fired {grade} on {neuron_id}")
-                typer.echo(f"  stability={card.stability:.2f}  difficulty={card.difficulty:.2f}  due={card.due}")
-        finally:
-            await circuit.close()
-
-    _run(_fire())
-
-
-# -------------------------------------------------------------------
-# due
-# -------------------------------------------------------------------
-
-
-@app.command()
-def due(
-    limit: int = typer.Option(20, "--limit", "-n", help="Max neurons to show"),
-    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
-    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
-) -> None:
-    """Show neurons due for review."""
-
-    async def _due():
-        circuit = _get_circuit(brain)
-        await circuit.connect()
-        try:
-            ids = await circuit.due_neurons(limit=limit)
-            if as_json:
-                items = []
-                for nid in ids:
-                    neuron = await circuit.get_neuron(nid)
-                    if neuron:
-                        items.append(_neuron_dict(neuron, circuit))
-                _out(items, use_json=True)
-            else:
-                if not ids:
-                    typer.echo("No neurons due for review.")
-                    return
-                typer.echo(f"{len(ids)} neuron(s) due:")
-                for nid in ids:
-                    neuron = await circuit.get_neuron(nid)
-                    pressure = circuit.get_pressure(nid)
-                    title = _extract_title(neuron.content) if neuron else nid
-                    p_indicator = f"  pressure={pressure:.2f}" if pressure > 0 else ""
-                    typer.echo(f"  {nid}  {title}{p_indicator}")
-        finally:
-            await circuit.close()
-
-    _run(_due())
 
 
 # -------------------------------------------------------------------
@@ -511,136 +325,6 @@ def retrieve(
 
 
 # -------------------------------------------------------------------
-# list
-# -------------------------------------------------------------------
-
-
-@app.command(name="list")
-def list_neurons(
-    type: Optional[str] = typer.Option(None, "--type", "-t", help="Filter by type"),
-    domain: Optional[str] = typer.Option(None, "--domain", "-d", help="Filter by domain"),
-    limit: int = typer.Option(50, "--limit", "-n", help="Max neurons to show"),
-    meta_keys: bool = typer.Option(False, "--meta-keys", help="List filterable/searchable metadata keys"),
-    meta_values: Optional[str] = typer.Option(None, "--meta-values", help="List distinct values for a metadata key"),
-    domains: bool = typer.Option(False, "--domains", help="List domains with neuron counts"),
-    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
-    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
-) -> None:
-    """List neurons, metadata keys, or domains."""
-
-    async def _list():
-        circuit = _get_circuit(brain)
-        await circuit.connect()
-        try:
-            # Meta-key discovery mode
-            if meta_keys:
-                keys = await circuit.get_meta_keys()
-                if as_json:
-                    _out(keys, use_json=True)
-                else:
-                    if not keys:
-                        typer.echo("No metadata keys found.")
-                        return
-                    typer.echo("Metadata keys:")
-                    for k in keys:
-                        samples = ", ".join(k["sample_values"][:3])
-                        typer.echo(f"  {k['key']}  [{k['layer']}]  ({k['count']} sources)  e.g. {samples}")
-                return
-
-            # Meta-values mode
-            if meta_values:
-                values = await circuit.get_meta_values(meta_values)
-                if as_json:
-                    _out(values, use_json=True)
-                else:
-                    if not values:
-                        typer.echo(f"No values found for key '{meta_values}'.")
-                        return
-                    typer.echo(f"Values for '{meta_values}':")
-                    for v in values:
-                        typer.echo(f"  {v['value']}  [{v['layer']}]  ({v['count']})")
-                return
-
-            # Domain discovery mode
-            if domains:
-                counts = await circuit.get_domain_counts()
-                if as_json:
-                    _out(counts, use_json=True)
-                else:
-                    if not counts:
-                        typer.echo("No domains found.")
-                        return
-                    typer.echo("Domains:")
-                    for c in counts:
-                        typer.echo(f"  {c['domain']:20s}  {c['count']} neurons")
-                return
-
-            # Default: list neurons
-            kwargs = {"limit": limit}
-            if type:
-                kwargs["type"] = type
-            if domain:
-                kwargs["domain"] = domain
-            neurons = await circuit.list_neurons(**kwargs)
-            if as_json:
-                _out([_neuron_dict(n, circuit) for n in neurons], use_json=True)
-            else:
-                if not neurons:
-                    typer.echo("No neurons found.")
-                    return
-                typer.echo(f"{len(neurons)} neuron(s):")
-                for n in neurons:
-                    title = _extract_title(n.content)
-                    meta = ""
-                    if n.type:
-                        meta += f"  [{n.type}]"
-                    if n.domain:
-                        meta += f"  @{n.domain}"
-                    typer.echo(f"  {n.id}  {title}{meta}")
-        finally:
-            await circuit.close()
-
-    _run(_list())
-
-
-# -------------------------------------------------------------------
-# link
-# -------------------------------------------------------------------
-
-
-@app.command()
-def link(
-    pre: str = typer.Argument(..., help="Source neuron ID"),
-    post: str = typer.Argument(..., help="Target neuron ID"),
-    type: str = typer.Option("relates_to", "--type", "-t", help="Synapse type: requires|extends|contrasts|relates_to"),
-    weight: float = typer.Option(0.5, "--weight", "-w", help="Initial weight"),
-    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
-    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
-) -> None:
-    """Create a synapse between two neurons."""
-    try:
-        syn_type = SynapseType(type)
-    except ValueError:
-        typer.echo(f"Invalid type: {type}. Use: requires, extends, contrasts, relates_to", err=True)
-        raise typer.Exit(1)
-
-    async def _link():
-        circuit = _get_circuit(brain)
-        await circuit.connect()
-        try:
-            created = await circuit.add_synapse(pre, post, syn_type, weight=weight)
-            if as_json:
-                _out([{"pre": s.pre, "post": s.post, "type": s.type.value, "weight": s.weight} for s in created], use_json=True)
-            else:
-                for s in created:
-                    typer.echo(f"Linked {s.pre} --{s.type.value}--> {s.post}")
-        finally:
-            await circuit.close()
-
-    _run(_link())
-
-
-# -------------------------------------------------------------------
 # stats
 # -------------------------------------------------------------------
 
@@ -672,147 +356,553 @@ def stats(
 
 
 # -------------------------------------------------------------------
-# communities
+# diagnose
 # -------------------------------------------------------------------
 
 
 @app.command()
-def communities(
-    detect: bool = typer.Option(False, "--detect", help="Force re-detection of communities"),
-    resolution: float = typer.Option(1.0, "--resolution", "-r", help="Louvain resolution parameter"),
-    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
+def diagnose(
+    weak_threshold: float = typer.Option(0.2, "--weak-threshold", help="Weight threshold for weak synapses"),
+    format: str = typer.Option("text", "--format", "-f", help="Output format: text, json, html"),
+    as_json: bool = typer.Option(False, "--json", help="Shorthand for --format json"),
     brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
 ) -> None:
-    """Show or detect communities in the knowledge graph."""
+    """Run brain health diagnostics.
 
-    async def _communities():
+    Analyzes orphan neurons, weak synapses, domain balance,
+    community cohesion, bridge gaps, dangling prerequisites,
+    source freshness, and surprise bridges.
+    """
+
+    async def _diagnose():
         circuit = _get_circuit(brain)
         await circuit.connect()
         try:
-            if detect:
-                result = await circuit.detect_communities(resolution=resolution)
-                if as_json:
-                    # Convert to JSON-friendly format
-                    _out({
-                        "detected": True,
-                        "count": len(result),
-                        "communities": {str(k): v for k, v in result.items()},
-                    }, use_json=True)
-                else:
-                    if not result:
-                        typer.echo("No communities detected (empty graph).")
-                        return
-                    typer.echo(f"Detected {len(result)} community(ies):")
-                    for cid, members in sorted(result.items()):
-                        labels = []
-                        for nid in members[:5]:
-                            n = await circuit.get_neuron(nid)
-                            labels.append(_extract_title(n.content) if n else nid)
-                        suffix = f" (+{len(members) - 5} more)" if len(members) > 5 else ""
-                        typer.echo(f"  [{cid}] {len(members)} neurons: {', '.join(labels)}{suffix}")
+            result = await circuit.diagnose(
+                weak_synapse_threshold=weak_threshold,
+            )
+
+            fmt = "json" if as_json else format
+
+            if fmt == "json":
+                _out(result, use_json=True)
+            elif fmt == "html":
+                html = _diagnose_html(result)
+                typer.echo(html)
             else:
-                cmap = circuit.community_map()
-                if as_json:
-                    # Group by community
-                    groups: dict[int, list[str]] = {}
-                    for nid, cid in cmap.items():
-                        groups.setdefault(cid, []).append(nid)
-                    _out({
-                        "count": len(groups),
-                        "communities": {str(k): v for k, v in groups.items()},
-                    }, use_json=True)
-                else:
-                    if not cmap:
-                        typer.echo("No communities assigned yet. Run: spkt communities --detect")
-                        return
-                    groups = {}
-                    for nid, cid in cmap.items():
-                        groups.setdefault(cid, []).append(nid)
-                    typer.echo(f"{len(groups)} community(ies):")
-                    for cid, members in sorted(groups.items()):
-                        labels = []
-                        for nid in members[:5]:
-                            n = await circuit.get_neuron(nid)
-                            labels.append(_extract_title(n.content) if n else nid)
-                        suffix = f" (+{len(members) - 5} more)" if len(members) > 5 else ""
-                        typer.echo(f"  [{cid}] {len(members)} neurons: {', '.join(labels)}{suffix}")
+                _diagnose_text(result)
         finally:
             await circuit.close()
 
-    _run(_communities())
+    _run(_diagnose())
+
+
+def _diagnose_text(d: dict) -> None:
+    """Render diagnose result as human-readable text."""
+    # Orphans
+    orphans = d["orphans"]
+    typer.echo(f"Orphan neurons: {len(orphans)}")
+    if orphans:
+        for nid in orphans[:10]:
+            typer.echo(f"  {nid}")
+        if len(orphans) > 10:
+            typer.echo(f"  ... and {len(orphans) - 10} more")
+
+    # Weak synapses
+    weak = d["weak_synapses"]
+    typer.echo(f"\nWeak synapses: {len(weak)}")
+    for s in weak[:10]:
+        typer.echo(f"  {s['pre']} --{s['type']}--> {s['post']}  w={s['weight']:.2f}")
+
+    # Domain balance
+    db = d["domain_balance"]
+    typer.echo(f"\nDomain balance ({db['total']} neurons):")
+    for domain, count in sorted(db["counts"].items(), key=lambda x: -x[1]):
+        typer.echo(f"  {domain:20s}  {count}")
+    typer.echo(f"  Imbalance ratio: {db['imbalance_ratio']:.1f}")
+
+    # Community cohesion
+    cc = d["community_cohesion"]
+    typer.echo(f"\nCommunity cohesion ({cc['communities']} communities):")
+    typer.echo(f"  Intra-community edges: {cc['intra_edges']}")
+    typer.echo(f"  Inter-community edges: {cc['inter_edges']}")
+    typer.echo(f"  Cohesion ratio: {cc['cohesion_ratio']:.2f}")
+
+    # Isolated communities
+    iso = d["isolated_communities"]
+    if iso:
+        typer.echo(f"\nIsolated communities (no bridges): {iso}")
+
+    # Dangling prerequisites
+    dangling = d["dangling_prerequisites"]
+    typer.echo(f"\nDangling prerequisites: {len(dangling)}")
+    for dp in dangling[:10]:
+        typer.echo(f"  {dp['neuron']} requires {dp['requires']} ({dp['reason']})")
+
+    # Source freshness
+    sf = d["source_freshness"]
+    typer.echo(f"\nSources: {sf['total']} total, {sf['url_sources']} URL")
+    if sf["unreachable"]:
+        typer.echo(f"  Unreachable: {sf['unreachable']}")
+    if sf["never_fetched"]:
+        typer.echo(f"  Never fetched: {sf['never_fetched']}")
+
+    # Surprise bridges
+    bridges = d["surprise_bridges"]
+    if bridges:
+        typer.echo(f"\nSurprise bridges (top {len(bridges)}):")
+        for b in bridges[:5]:
+            typer.echo(f"  {b['pre']} --{b['type']}--> {b['post']}  communities={b['communities']}  score={b['surprise_score']}")
+
+
+def _diagnose_html(d: dict) -> str:
+    """Render diagnose result as a self-contained HTML report."""
+    sections = []
+
+    # Orphans
+    orphans = d["orphans"]
+    rows = "".join(f"<li><code>{nid}</code></li>" for nid in orphans[:20])
+    if len(orphans) > 20:
+        rows += f"<li>... and {len(orphans) - 20} more</li>"
+    sections.append(f"<h2>Orphan Neurons ({len(orphans)})</h2><ul>{rows}</ul>" if orphans else f"<h2>Orphan Neurons (0)</h2><p>None</p>")
+
+    # Weak synapses
+    weak = d["weak_synapses"]
+    if weak:
+        ws_rows = "".join(
+            f"<tr><td><code>{s['pre']}</code></td><td>{s['type']}</td><td><code>{s['post']}</code></td><td>{s['weight']:.2f}</td></tr>"
+            for s in weak[:20]
+        )
+        sections.append(f"<h2>Weak Synapses ({len(weak)})</h2><table><tr><th>Pre</th><th>Type</th><th>Post</th><th>Weight</th></tr>{ws_rows}</table>")
+    else:
+        sections.append("<h2>Weak Synapses (0)</h2><p>None</p>")
+
+    # Domain balance
+    db = d["domain_balance"]
+    db_rows = "".join(
+        f"<tr><td>{domain}</td><td>{count}</td></tr>"
+        for domain, count in sorted(db["counts"].items(), key=lambda x: -x[1])
+    )
+    sections.append(f"<h2>Domain Balance</h2><table><tr><th>Domain</th><th>Count</th></tr>{db_rows}</table><p>Imbalance ratio: {db['imbalance_ratio']:.1f}</p>")
+
+    # Community cohesion
+    cc = d["community_cohesion"]
+    sections.append(
+        f"<h2>Community Cohesion</h2>"
+        f"<p>{cc['communities']} communities | "
+        f"Intra: {cc['intra_edges']} | Inter: {cc['inter_edges']} | "
+        f"Cohesion: {cc['cohesion_ratio']:.2f}</p>"
+    )
+
+    # Isolated communities
+    iso = d["isolated_communities"]
+    if iso:
+        sections.append(f"<h2>Isolated Communities</h2><p>{', '.join(str(c) for c in iso)}</p>")
+
+    # Dangling prerequisites
+    dangling = d["dangling_prerequisites"]
+    if dangling:
+        dp_rows = "".join(
+            f"<tr><td><code>{dp['neuron']}</code></td><td><code>{dp['requires']}</code></td><td>{dp['reason']}</td></tr>"
+            for dp in dangling[:20]
+        )
+        sections.append(f"<h2>Dangling Prerequisites ({len(dangling)})</h2><table><tr><th>Neuron</th><th>Requires</th><th>Reason</th></tr>{dp_rows}</table>")
+
+    # Source freshness
+    sf = d["source_freshness"]
+    sections.append(f"<h2>Source Freshness</h2><p>{sf['total']} total, {sf['url_sources']} URL, {sf['unreachable']} unreachable, {sf['never_fetched']} never fetched</p>")
+
+    # Surprise bridges
+    bridges = d["surprise_bridges"]
+    if bridges:
+        br_rows = "".join(
+            f"<tr><td><code>{b['pre']}</code></td><td>{b['type']}</td><td><code>{b['post']}</code></td><td>{b['communities']}</td><td>{b['surprise_score']}</td></tr>"
+            for b in bridges[:10]
+        )
+        sections.append(f"<h2>Surprise Bridges (top {min(len(bridges), 10)})</h2><table><tr><th>Pre</th><th>Type</th><th>Post</th><th>Communities</th><th>Score</th></tr>{br_rows}</table>")
+
+    body = "\n".join(sections)
+    return f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Brain Diagnostics</title>
+<style>
+body {{ font-family: -apple-system, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: #333; }}
+h1 {{ border-bottom: 2px solid #e0e0e0; padding-bottom: 0.5rem; }}
+h2 {{ color: #555; margin-top: 2rem; }}
+table {{ border-collapse: collapse; width: 100%; margin: 0.5rem 0; }}
+th, td {{ border: 1px solid #ddd; padding: 6px 10px; text-align: left; }}
+th {{ background: #f5f5f5; }}
+code {{ background: #f0f0f0; padding: 2px 4px; border-radius: 3px; font-size: 0.9em; }}
+</style></head>
+<body><h1>Brain Diagnostics</h1>{body}</body></html>"""
 
 
 # -------------------------------------------------------------------
-# inspect
+# progress
 # -------------------------------------------------------------------
 
 
 @app.command()
-def inspect(
-    neuron_id: str = typer.Argument(..., help="Neuron ID to inspect"),
-    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
+def progress(
+    domain_filter: Optional[str] = typer.Option(None, "--domain", "-d", help="Filter by domain"),
+    format: str = typer.Option("text", "--format", "-f", help="Output format: text, json, html"),
+    as_json: bool = typer.Option(False, "--json", help="Shorthand for --format json"),
     brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
 ) -> None:
-    """Inspect a neuron: content, FSRS state, pressure, neighbors."""
+    """Show learning progress report.
 
-    async def _inspect():
+    Mastery levels, retention rate, learning velocity, weak spots,
+    and review adherence. Optionally filter by domain.
+    """
+
+    async def _progress():
         circuit = _get_circuit(brain)
         await circuit.connect()
         try:
-            neuron = await circuit.get_neuron(neuron_id)
-            if neuron is None:
-                typer.echo(f"Neuron {neuron_id} not found", err=True)
-                raise typer.Exit(1)
+            result = await circuit.progress(domain=domain_filter)
 
-            sources = await circuit.get_sources_for_neuron(neuron_id)
-            community_id = circuit.get_community(neuron_id)
+            fmt = "json" if as_json else format
 
+            if fmt == "json":
+                _out(result, use_json=True)
+            elif fmt == "html":
+                html = _progress_html(result)
+                typer.echo(html)
+            else:
+                _progress_text(result)
+        finally:
+            await circuit.close()
+
+    _run(_progress())
+
+
+def _progress_text(d: dict) -> None:
+    """Render progress result as human-readable text."""
+    if d["domain_filter"]:
+        typer.echo(f"Progress report (domain: {d['domain_filter']})\n")
+    else:
+        typer.echo("Progress report\n")
+
+    # Mastery
+    mastery = d["mastery"]
+    if mastery:
+        typer.echo("Mastery by domain:")
+        for domain, m in sorted(mastery.items()):
+            stab = f"{m['avg_stability']:.1f}d" if m["avg_stability"] is not None else "-"
+            ret = f"{m['avg_retrievability']:.0%}" if m["avg_retrievability"] is not None else "-"
+            typer.echo(f"  {domain:20s}  {m['neuron_count']} neurons  stability={stab}  retrievability={ret}  ({m['reviewed_count']} reviewed)")
+    else:
+        typer.echo("No neurons found.")
+
+    # Retention
+    r = d["retention"]
+    typer.echo(f"\nRetention rate: {r['overall']:.0%} ({r['total_reviews']} reviews)" if r["overall"] is not None else "\nRetention rate: - (no reviews)")
+    if r["per_domain"]:
+        for domain, rate in sorted(r["per_domain"].items()):
+            if rate is not None:
+                typer.echo(f"  {domain:20s}  {rate:.0%}")
+
+    # Velocity
+    v = d["velocity"]
+    typer.echo(f"\nLearning velocity ({v['total_neurons']} total neurons):")
+    for w in v["weekly"]:
+        bar = "\u2588" * w["added"] if w["added"] > 0 else "-"
+        typer.echo(f"  {w['week_of']}  +{w['added']:3d}  {bar}")
+
+    # Weak spots
+    ws = d["weak_spots"]
+    if ws:
+        typer.echo(f"\nWeak spots (important but not mastered):")
+        for w in ws[:10]:
+            stab = f"{w['stability']:.1f}d" if w["stability"] is not None else "never"
+            typer.echo(f"  {w['id']}  @{w['domain'] or '-'}  stability={stab}  centrality={w['centrality']}")
+
+    # Adherence
+    a = d["adherence"]
+    rate = f"{a['adherence_rate']:.0%}" if a["adherence_rate"] is not None else "-"
+    typer.echo(f"\nReview adherence: {rate} ({a['reviewed_at_least_once']}/{a['total_neurons']} reviewed, {a['currently_overdue']} overdue)")
+
+
+def _progress_html(d: dict) -> str:
+    """Render progress result as HTML report."""
+    title = f"Progress Report — {d['domain_filter']}" if d["domain_filter"] else "Progress Report"
+    sections = []
+
+    # Mastery
+    mastery = d["mastery"]
+    if mastery:
+        rows = ""
+        for domain, m in sorted(mastery.items()):
+            stab = f"{m['avg_stability']:.1f}" if m["avg_stability"] is not None else "-"
+            ret = f"{m['avg_retrievability']:.0%}" if m["avg_retrievability"] is not None else "-"
+            rows += f"<tr><td>{domain}</td><td>{m['neuron_count']}</td><td>{stab}</td><td>{ret}</td><td>{m['reviewed_count']}</td></tr>"
+        sections.append(f"<h2>Mastery</h2><table><tr><th>Domain</th><th>Neurons</th><th>Avg Stability (days)</th><th>Avg Retrievability</th><th>Reviewed</th></tr>{rows}</table>")
+
+    # Retention
+    r = d["retention"]
+    overall = f"{r['overall']:.0%}" if r["overall"] is not None else "-"
+    sections.append(f"<h2>Retention</h2><p>Overall: {overall} ({r['total_reviews']} reviews)</p>")
+
+    # Velocity
+    v = d["velocity"]
+    v_rows = "".join(f"<tr><td>{w['week_of']}</td><td>{w['added']}</td></tr>" for w in v["weekly"])
+    sections.append(f"<h2>Learning Velocity</h2><p>{v['total_neurons']} total neurons</p><table><tr><th>Week</th><th>Added</th></tr>{v_rows}</table>")
+
+    # Weak spots
+    ws = d["weak_spots"]
+    if ws:
+        ws_rows = "".join(
+            f"<tr><td><code>{w['id']}</code></td><td>{w['domain'] or '-'}</td><td>{w['stability'] if w['stability'] is not None else 'never'}</td><td>{w['centrality']}</td></tr>"
+            for w in ws[:10]
+        )
+        sections.append(f"<h2>Weak Spots</h2><table><tr><th>ID</th><th>Domain</th><th>Stability</th><th>Centrality</th></tr>{ws_rows}</table>")
+
+    # Adherence
+    a = d["adherence"]
+    rate = f"{a['adherence_rate']:.0%}" if a["adherence_rate"] is not None else "-"
+    sections.append(f"<h2>Review Adherence</h2><p>{rate} ({a['reviewed_at_least_once']}/{a['total_neurons']} reviewed, {a['currently_overdue']} overdue)</p>")
+
+    body = "\n".join(sections)
+    return f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>{title}</title>
+<style>
+body {{ font-family: -apple-system, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: #333; }}
+h1 {{ border-bottom: 2px solid #e0e0e0; padding-bottom: 0.5rem; }}
+h2 {{ color: #555; margin-top: 2rem; }}
+table {{ border-collapse: collapse; width: 100%; margin: 0.5rem 0; }}
+th, td {{ border: 1px solid #ddd; padding: 6px 10px; text-align: left; }}
+th {{ background: #f5f5f5; }}
+code {{ background: #f0f0f0; padding: 2px 4px; border-radius: 3px; font-size: 0.9em; }}
+</style></head>
+<body><h1>{title}</h1>{body}</body></html>"""
+
+
+# -------------------------------------------------------------------
+# consolidate (sleep-inspired knowledge consolidation)
+# -------------------------------------------------------------------
+
+consolidate_app = typer.Typer(help="Sleep-inspired knowledge consolidation.")
+app.add_typer(consolidate_app, name="consolidate")
+
+
+@consolidate_app.callback(invoke_without_command=True)
+def consolidate_plan(
+    ctx: typer.Context,
+    domain_filter: Optional[str] = typer.Option(None, "--domain", "-d", help="Target specific domain (TMR)"),
+    decay_factor: float = typer.Option(0.8, "--decay", help="Weight decay factor (SHY phase)"),
+    similarity: float = typer.Option(0.85, "--similarity", help="Similarity threshold for latent synapses"),
+    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
+    export_file: Optional[Path] = typer.Option(None, "--export", "-o", help="Export plan to JSON file"),
+    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
+) -> None:
+    """Generate a consolidation plan (dry-run).
+
+    Shows what would happen: weight decays, prunable synapses,
+    latent connections, near-duplicates, and forget candidates.
+    Use 'spkt consolidate apply' to execute the plan.
+    """
+    if ctx.invoked_subcommand is not None:
+        return
+
+    import json as json_mod
+
+    async def _plan():
+        circuit = _get_circuit(brain)
+        await circuit.connect()
+        try:
+            plan = await circuit.consolidate(
+                decay_factor=decay_factor,
+                similarity_threshold=similarity,
+                domain=domain_filter,
+            )
+            if export_file:
+                export_file.write_text(json_mod.dumps(plan, indent=2, default=str))
+                typer.echo(f"Plan exported to {export_file}")
             if as_json:
-                d = _neuron_dict(neuron, circuit)
-                d["neighbors_out"] = circuit.neighbors(neuron_id)
-                d["neighbors_in"] = circuit.predecessors(neuron_id)
-                d["community_id"] = community_id
-                d["sources"] = [
-                    {"id": s.id, "url": s.url, "title": s.title}
-                    for s in sources
-                ]
-                _out(d, use_json=True)
+                _out(plan, use_json=True)
             else:
-                typer.echo(f"ID:       {neuron.id}")
-                typer.echo(f"Type:     {neuron.type or '-'}")
-                typer.echo(f"Domain:   {neuron.domain or '-'}")
-                typer.echo(f"Created:  {neuron.created_at}")
-
-                card = circuit.get_card(neuron_id)
-                if card:
-                    stab = f"{card.stability:.2f}" if card.stability is not None else "-"
-                    diff = f"{card.difficulty:.2f}" if card.difficulty is not None else "-"
-                    typer.echo(f"FSRS:     stability={stab}  difficulty={diff}  state={card.state.name}  due={card.due}")
-
-                pressure = circuit.get_pressure(neuron_id)
-                typer.echo(f"Pressure: {pressure:.4f}")
-
-                if community_id is not None:
-                    typer.echo(f"Community: {community_id}")
-
-                if sources:
-                    typer.echo(f"Sources ({len(sources)}):")
-                    for s in sources:
-                        label = s.title or s.url or s.id
-                        typer.echo(f"  {s.id}  {label}")
-
-                neighbors = circuit.neighbors(neuron_id)
-                preds = circuit.predecessors(neuron_id)
-                if neighbors:
-                    typer.echo(f"Out ({len(neighbors)}): {', '.join(neighbors)}")
-                if preds:
-                    typer.echo(f"In  ({len(preds)}):  {', '.join(preds)}")
-
-                typer.echo(f"\n{neuron.content}")
+                _consolidate_text(plan)
         finally:
             await circuit.close()
 
-    _run(_inspect())
+    _run(_plan())
+
+
+@consolidate_app.command(name="apply")
+def consolidate_apply(
+    plan_file: Optional[Path] = typer.Argument(None, help="Plan JSON file (or uses most recent dry-run)"),
+    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
+    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
+) -> None:
+    """Apply a consolidation plan.
+
+    Validates that the Brain hasn't changed since the plan was generated
+    (state hash check). If no plan file is given, generates and applies
+    a fresh plan in one step.
+    """
+    import json as json_mod
+
+    async def _apply():
+        circuit = _get_circuit(brain)
+        await circuit.connect()
+        try:
+            if plan_file:
+                plan = json_mod.loads(plan_file.read_text())
+            else:
+                plan = await circuit.consolidate()
+            result = await circuit.apply_consolidation(plan)
+            if as_json:
+                _out(result, use_json=True)
+            else:
+                typer.echo("Consolidation applied:")
+                typer.echo(f"  Synapses added:  {result['synapses_added']}")
+                typer.echo(f"  Weights decayed: {result['weights_decayed']}")
+                typer.echo(f"  Synapses pruned: {result['synapses_pruned']}")
+                typer.echo(f"  Neurons removed: {result['neurons_removed']}")
+        finally:
+            await circuit.close()
+
+    _run(_apply())
+
+
+def _consolidate_text(plan: dict) -> None:
+    s = plan["summary"]
+    domain = plan.get("domain")
+    header = f"Consolidation plan"
+    if domain:
+        header += f" (domain: {domain})"
+    typer.echo(f"{header}  [hash: {plan['state_hash']}]\n")
+
+    typer.echo("Summary:")
+    typer.echo(f"  Latent synapses to add:   {s['latent_synapses']}")
+    typer.echo(f"  Weights to decay:         {s['weight_decays']}")
+    typer.echo(f"  Synapses to prune:        {s['prunable_synapses']}")
+    typer.echo(f"  Neurons to remove:        {s['removable_neurons']}")
+    typer.echo(f"  Near-duplicates found:    {s['near_duplicates']}")
+    typer.echo(f"  Forget candidates:        {s['forget_candidates']}")
+
+    if plan["shy"]["prunable"]:
+        typer.echo(f"\nPrunable synapses ({len(plan['shy']['prunable'])}):")
+        for p in plan["shy"]["prunable"][:10]:
+            typer.echo(f"  {p['pre']} --{p['type']}--> {p['post']}  w={p['old_weight']:.3f}→{p['new_weight']:.3f}")
+
+    if plan["sws"]["latent_synapses"]:
+        typer.echo(f"\nLatent synapses ({len(plan['sws']['latent_synapses'])}):")
+        for ls in plan["sws"]["latent_synapses"][:10]:
+            typer.echo(f"  {ls['pre']} ↔ {ls['post']}  sim={ls['similarity']:.3f}")
+
+    if plan["rem"]["near_duplicates"]:
+        typer.echo(f"\nNear-duplicates ({len(plan['rem']['near_duplicates'])}):")
+        for nd in plan["rem"]["near_duplicates"][:10]:
+            typer.echo(f"  {nd['neuron_a']} ↔ {nd['neuron_b']}  sim={nd['similarity']:.3f}  [{nd['action']}]")
+
+    if plan["triage"]["forget_candidates"]:
+        typer.echo(f"\nForget candidates ({len(plan['triage']['forget_candidates'])}):")
+        for fc in plan["triage"]["forget_candidates"][:10]:
+            typer.echo(f"  {fc['id']}  stability={fc['stability']}  centrality={fc['centrality']}  age={fc['age_days']}d")
+
+    typer.echo(f"\nTo apply: spkt consolidate apply")
+
+
+# -------------------------------------------------------------------
+# manual (auto-generated user guide)
+# -------------------------------------------------------------------
+
+
+@app.command()
+def manual(
+    format: str = typer.Option("text", "--format", "-f", help="Output format: text, json, html"),
+    as_json: bool = typer.Option(False, "--json", help="Shorthand for --format json"),
+    write_meta: bool = typer.Option(False, "--write-meta", help="Write _meta neurons to the brain"),
+    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
+) -> None:
+    """Generate a user guide for this Brain.
+
+    Shows domain overview, representative topics, knowledge cutoff,
+    coverage notes, and source attribution. Use --write-meta to
+    store the guide as _meta neurons for RAG retrieval.
+    """
+
+    async def _manual():
+        circuit = _get_circuit(brain)
+        await circuit.connect()
+        try:
+            data = await circuit.generate_manual(write_meta=write_meta)
+            fmt = "json" if as_json else format
+            if fmt == "json":
+                _out(data, use_json=True)
+            elif fmt == "html":
+                typer.echo(_manual_html(data))
+            else:
+                _manual_text(data)
+                if write_meta:
+                    typer.echo("\n_meta neurons written to brain.")
+        finally:
+            await circuit.close()
+
+    _run(_manual())
+
+
+def _manual_text(d: dict) -> None:
+    typer.echo(f"Brain Manual — {d['neuron_count']} neurons\n")
+
+    if d["domains"]:
+        typer.echo("Domains:")
+        for dom in d["domains"]:
+            coverage = " (limited)" if dom["limited_coverage"] else ""
+            typer.echo(f"  {dom['name']:20s} {dom['neuron_count']:>4d} neurons{coverage}")
+            if dom["topics"]:
+                typer.echo(f"    Topics: {', '.join(dom['topics'])}")
+        typer.echo()
+
+    cutoff = d["cutoff"] or "no sources fetched"
+    typer.echo(f"Knowledge cutoff: {cutoff}")
+
+    if d["sources"]:
+        typer.echo(f"\nSources ({len(d['sources'])}):")
+        for src in d["sources"]:
+            title = src["title"] or "untitled"
+            typer.echo(f"  - {title}")
+
+
+def _manual_html(d: dict) -> str:
+    lines = [
+        '<!DOCTYPE html>',
+        '<html><head><meta charset="utf-8"><title>Brain Manual</title>',
+        '<style>',
+        'body { font-family: -apple-system, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: #333; }',
+        'h1 { border-bottom: 2px solid #e0e0e0; padding-bottom: 0.5rem; }',
+        'h2 { color: #555; margin-top: 2rem; }',
+        'table { border-collapse: collapse; width: 100%; margin: 0.5rem 0; }',
+        'th, td { border: 1px solid #ddd; padding: 6px 10px; text-align: left; }',
+        'th { background: #f5f5f5; }',
+        '.limited { color: #c0392b; font-size: 0.85em; }',
+        '</style></head>',
+        f'<body><h1>Brain Manual</h1><p>{d["neuron_count"]} neurons</p>',
+    ]
+
+    if d["domains"]:
+        lines.append('<h2>Domains</h2><table><tr><th>Domain</th><th>Neurons</th><th>Topics</th><th>Coverage</th></tr>')
+        for dom in d["domains"]:
+            topics = ", ".join(dom["topics"]) if dom["topics"] else "-"
+            cov = '<span class="limited">limited</span>' if dom["limited_coverage"] else "good"
+            lines.append(f'<tr><td>{dom["name"]}</td><td>{dom["neuron_count"]}</td><td>{topics}</td><td>{cov}</td></tr>')
+        lines.append('</table>')
+
+    cutoff = d["cutoff"] or "no sources fetched"
+    lines.append(f'<h2>Knowledge Cutoff</h2><p>{cutoff}</p>')
+
+    if d["sources"]:
+        lines.append(f'<h2>Sources ({len(d["sources"])})</h2><ul>')
+        for src in d["sources"]:
+            title = src["title"] or "untitled"
+            if src["url"]:
+                lines.append(f'<li><a href="{src["url"]}">{title}</a></li>')
+            else:
+                lines.append(f'<li>{title}</li>')
+        lines.append('</ul>')
+
+    lines.append('</body></html>')
+    return "\n".join(lines)
 
 
 # -------------------------------------------------------------------
@@ -914,920 +1004,6 @@ def quiz(
             await circuit.close()
 
     _run(_quiz())
-
-
-# -------------------------------------------------------------------
-# learn
-# -------------------------------------------------------------------
-
-
-@app.command(name="learn")
-def learn_cmd(
-    path_or_url: str = typer.Argument(..., help="File path, directory, or URL to ingest"),
-    domain: Optional[str] = typer.Option(None, "--domain", "-d", help="Domain tag"),
-    title: Optional[str] = typer.Option(None, "--title", help="Source title override"),
-    force: bool = typer.Option(False, "--force", help="Force ingest (truncate oversized searchable)"),
-    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
-    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
-) -> None:
-    """Ingest a source file, directory, or URL for agent-driven chunking.
-
-    For directories, reads all text files and optionally loads metadata
-    from a ``metadata.jsonl`` sidecar file. Each line in metadata.jsonl
-    maps ``file_name`` to ``filterable`` and ``searchable`` dicts.
-
-    Pre-flight validates searchable sizes. Use ``--force`` to truncate
-    oversized searchable fields instead of aborting.
-    """
-
-    async def _learn():
-        import hashlib
-
-        config = _load_brain_config(brain)
-        max_searchable = config.embedder.max_searchable_chars
-        circuit = _get_circuit(brain)
-        await circuit.connect()
-        try:
-            p = Path(path_or_url)
-            is_url = path_or_url.startswith(("http://", "https://"))
-
-            if is_url:
-                await _learn_url(circuit, config, path_or_url, domain, title, as_json)
-            elif p.is_dir():
-                await _learn_dir(circuit, config, p, domain, max_searchable, force, as_json)
-            elif p.is_file():
-                result = await _learn_file(circuit, p, domain, title, as_json=False)
-                if result:
-                    if as_json:
-                        _out(result, use_json=True)
-                    else:
-                        _emit_learn_result_from_dict(result)
-            else:
-                typer.echo(f"Not found: {path_or_url}", err=True)
-                raise typer.Exit(1)
-        finally:
-            await circuit.close()
-
-    _run(_learn())
-
-
-async def _learn_url(
-    circuit: Circuit,
-    config: BrainConfig,
-    url: str,
-    domain: str | None,
-    title_override: str | None,
-    as_json: bool,
-) -> None:
-    """Ingest a single URL."""
-    import hashlib
-    import urllib.request
-
-    now = datetime.now(timezone.utc)
-    etag: str | None = None
-    last_modified: str | None = None
-
-    try:
-        with urllib.request.urlopen(url, timeout=30) as resp:
-            raw_bytes = resp.read()
-            raw = raw_bytes.decode("utf-8", errors="replace")
-            raw_html = raw
-            etag = resp.headers.get("ETag")
-            last_modified = resp.headers.get("Last-Modified")
-    except Exception as e:
-        typer.echo(f"Failed to fetch URL: {e}", err=True)
-        raise typer.Exit(1)
-
-    content_hash = hashlib.sha256(raw.encode()).hexdigest()
-
-    existing = await circuit.find_source_by_url(url)
-    if existing:
-        src = existing
-    else:
-        src = Source(
-            url=url,
-            title=title_override or url[:80],
-            content_hash=content_hash,
-            fetched_at=now,
-            http_etag=etag,
-            http_last_modified=last_modified,
-            status="active",
-        )
-        # Save raw HTML to .spikuit/sources/
-        sources_dir = config.spikuit_dir / "sources"
-        sources_dir.mkdir(exist_ok=True)
-        html_path = sources_dir / f"{src.id}.html"
-        html_path.write_text(raw_html, encoding="utf-8")
-        src.storage_uri = f"file://{html_path.resolve()}"
-        await circuit.add_source(src)
-
-    _emit_learn_result(src, raw, domain, as_json)
-
-
-async def _learn_file(
-    circuit: Circuit,
-    p: Path,
-    domain: str | None,
-    title_override: str | None,
-    as_json: bool,
-    filterable: dict | None = None,
-    searchable: dict | None = None,
-) -> dict | None:
-    """Ingest a single local file. Returns result dict for batch use."""
-    import hashlib
-
-    raw = p.read_text(encoding="utf-8")
-    source_url = f"file://{p.resolve()}"
-    content_hash = hashlib.sha256(raw.encode()).hexdigest()
-
-    existing = await circuit.find_source_by_url(source_url)
-    if existing:
-        src = existing
-    else:
-        src = Source(
-            url=source_url,
-            title=title_override or p.stem,
-            content_hash=content_hash,
-            filterable=filterable,
-            searchable=searchable,
-        )
-        await circuit.add_source(src)
-
-    result = {
-        "source_id": src.id,
-        "source_url": src.url,
-        "source_title": src.title,
-        "content_hash": src.content_hash,
-        "storage_uri": src.storage_uri,
-        "domain": domain,
-        "content_length": len(raw),
-        "content": raw,
-    }
-    if filterable:
-        result["filterable"] = filterable
-    if searchable:
-        result["searchable"] = searchable
-    return result
-
-
-async def _learn_dir(
-    circuit: Circuit,
-    config: BrainConfig,
-    dir_path: Path,
-    domain: str | None,
-    max_searchable: int,
-    force: bool,
-    as_json: bool,
-) -> None:
-    """Ingest all text files in a directory with optional metadata.jsonl."""
-    # Collect text files (skip metadata.jsonl itself)
-    text_exts = {".md", ".txt", ".rst", ".html", ".htm", ".json", ".yaml", ".yml", ".csv", ".xml"}
-    files = sorted(
-        f for f in dir_path.iterdir()
-        if f.is_file() and f.name != "metadata.jsonl" and f.suffix.lower() in text_exts
-    )
-    if not files:
-        typer.echo(f"No ingestible files found in {dir_path}", err=True)
-        raise typer.Exit(1)
-
-    # Load metadata.jsonl if present
-    meta_map: dict[str, dict] = {}
-    meta_path = dir_path / "metadata.jsonl"
-    if meta_path.exists():
-        for line_no, line in enumerate(meta_path.read_text(encoding="utf-8").splitlines(), 1):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                entry = json.loads(line)
-            except json.JSONDecodeError as e:
-                typer.echo(f"metadata.jsonl line {line_no}: invalid JSON — {e}", err=True)
-                raise typer.Exit(1)
-            fname = entry.get("file_name")
-            if not fname:
-                typer.echo(f"metadata.jsonl line {line_no}: missing 'file_name'", err=True)
-                raise typer.Exit(1)
-            meta_map[fname] = entry
-
-    # Pre-flight: validate searchable sizes
-    violations: list[str] = []
-    for f in files:
-        meta = meta_map.get(f.name, {})
-        searchable = meta.get("searchable")
-        if searchable:
-            total = sum(len(f"[{k}: {v}]") for k, v in searchable.items())
-            if total > max_searchable:
-                violations.append(f"  {f.name}: {total} chars (max {max_searchable})")
-
-    if violations and not force:
-        typer.echo("Searchable metadata exceeds max_searchable_chars:", err=True)
-        for v in violations:
-            typer.echo(v, err=True)
-        typer.echo("Use --force to truncate, or reduce searchable content.", err=True)
-        raise typer.Exit(1)
-
-    # Ingest each file
-    results: list[dict] = []
-    for f in files:
-        meta = meta_map.get(f.name, {})
-        filterable = meta.get("filterable")
-        searchable = meta.get("searchable")
-        file_title = meta.get("title")
-
-        result = await _learn_file(
-            circuit, f, domain, file_title, as_json=False,
-            filterable=filterable, searchable=searchable,
-        )
-        if result:
-            results.append(result)
-
-    if as_json:
-        _out({"files": results, "count": len(results)}, use_json=True)
-    else:
-        typer.echo(f"Ingested {len(results)} file(s) from {dir_path}")
-        for r in results:
-            typer.echo(f"  {r['source_id']} — {r['source_title']} ({r['content_length']} chars)")
-        if meta_map:
-            typer.echo(f"  metadata.jsonl: {len(meta_map)} entries applied")
-        typer.echo("\nUse the /spkt-learn agent skill to chunk content into neurons.")
-
-
-def _emit_learn_result_from_dict(result: dict) -> None:
-    """Output learn result for a single file from result dict."""
-    typer.echo(f"Source: {result['source_id']} ({result['source_url']})")
-    typer.echo(f"Content: {result['content_length']} chars")
-    typer.echo(f"Domain: {result.get('domain') or '-'}")
-    typer.echo("\nUse the /spkt-learn agent skill to chunk this content into neurons.")
-
-
-def _emit_learn_result(src: Source, raw: str, domain: str | None, as_json: bool) -> None:
-    """Output learn result for a single source."""
-    if as_json:
-        _out({
-            "source_id": src.id,
-            "source_url": src.url,
-            "source_title": src.title,
-            "content_hash": src.content_hash,
-            "storage_uri": src.storage_uri,
-            "domain": domain,
-            "content_length": len(raw),
-            "content": raw,
-        }, use_json=True)
-    else:
-        typer.echo(f"Source: {src.id} ({src.url})")
-        typer.echo(f"Content: {len(raw)} chars")
-        typer.echo(f"Domain: {domain or '-'}")
-        typer.echo("\nUse the /spkt-learn agent skill to chunk this content into neurons.")
-
-
-# -------------------------------------------------------------------
-# refresh
-# -------------------------------------------------------------------
-
-
-@app.command()
-def refresh(
-    source_id: Optional[str] = typer.Argument(None, help="Source ID to refresh"),
-    stale: Optional[int] = typer.Option(None, "--stale", help="Refresh sources older than N days"),
-    all_sources: bool = typer.Option(False, "--all", help="Refresh all URL sources"),
-    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
-    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
-) -> None:
-    """Re-fetch URL sources and re-embed if content changed.
-
-    Checks HTTP ETag/Last-Modified headers first (conditional GET).
-    Updates content hash, flags unreachable sources.
-    """
-
-    async def _refresh():
-        import hashlib
-        import urllib.request
-
-        config = _load_brain_config(brain)
-        circuit = _get_circuit(brain)
-        await circuit.connect()
-        try:
-            # Determine which sources to refresh
-            targets: list = []
-            if source_id:
-                src = await circuit.get_source(source_id)
-                if not src:
-                    typer.echo(f"Source not found: {source_id}", err=True)
-                    raise typer.Exit(1)
-                if not src.url or not src.url.startswith(("http://", "https://")):
-                    typer.echo(f"Source {source_id} is not a URL source", err=True)
-                    raise typer.Exit(1)
-                targets = [src]
-            elif stale is not None:
-                targets = await circuit.get_stale_sources(stale)
-            elif all_sources:
-                all_src = await circuit.list_sources(limit=100_000)
-                targets = [s for s in all_src if s.url and s.url.startswith(("http://", "https://"))]
-            else:
-                typer.echo("Specify a source ID, --stale N, or --all", err=True)
-                raise typer.Exit(1)
-
-            if not targets:
-                if as_json:
-                    _out({"refreshed": 0, "changed": 0, "unreachable": 0}, use_json=True)
-                else:
-                    typer.echo("No sources to refresh.")
-                return
-
-            now = datetime.now(timezone.utc)
-            results = {"refreshed": 0, "changed": 0, "unreachable": 0, "details": []}
-
-            for src in targets:
-                detail = {"id": src.id, "url": src.url, "status": "unchanged"}
-
-                # Try conditional GET first
-                req = urllib.request.Request(src.url, method="GET")
-                if src.http_etag:
-                    req.add_header("If-None-Match", src.http_etag)
-                if src.http_last_modified:
-                    req.add_header("If-Modified-Since", src.http_last_modified)
-
-                try:
-                    with urllib.request.urlopen(req, timeout=30) as resp:
-                        if resp.status == 304:
-                            # Not modified
-                            src.fetched_at = now
-                            await circuit.update_source(src)
-                            detail["status"] = "not_modified"
-                            results["refreshed"] += 1
-                            results["details"].append(detail)
-                            continue
-
-                        raw_bytes = resp.read()
-                        raw = raw_bytes.decode("utf-8", errors="replace")
-                        new_etag = resp.headers.get("ETag")
-                        new_last_modified = resp.headers.get("Last-Modified")
-
-                except urllib.error.HTTPError as e:
-                    if e.code == 304:
-                        src.fetched_at = now
-                        await circuit.update_source(src)
-                        detail["status"] = "not_modified"
-                        results["refreshed"] += 1
-                        results["details"].append(detail)
-                        continue
-                    elif e.code in (404, 410):
-                        src.status = "unreachable"
-                        src.fetched_at = now
-                        await circuit.update_source(src)
-                        detail["status"] = "unreachable"
-                        results["unreachable"] += 1
-                        results["refreshed"] += 1
-                        results["details"].append(detail)
-                        continue
-                    else:
-                        detail["status"] = f"error_{e.code}"
-                        results["details"].append(detail)
-                        continue
-                except Exception as e:
-                    src.status = "unreachable"
-                    src.fetched_at = now
-                    await circuit.update_source(src)
-                    detail["status"] = "unreachable"
-                    results["unreachable"] += 1
-                    results["refreshed"] += 1
-                    results["details"].append(detail)
-                    continue
-
-                # Compare content hash
-                new_hash = hashlib.sha256(raw.encode()).hexdigest()
-                src.fetched_at = now
-                src.http_etag = new_etag
-                src.http_last_modified = new_last_modified
-                src.status = "active"
-
-                if new_hash != src.content_hash:
-                    src.content_hash = new_hash
-                    detail["status"] = "changed"
-                    results["changed"] += 1
-
-                    # Save updated raw content
-                    sources_dir = config.spikuit_dir / "sources"
-                    sources_dir.mkdir(exist_ok=True)
-                    html_path = sources_dir / f"{src.id}.html"
-                    html_path.write_text(raw, encoding="utf-8")
-                    src.storage_uri = f"file://{html_path.resolve()}"
-
-                await circuit.update_source(src)
-                results["refreshed"] += 1
-                results["details"].append(detail)
-
-            if as_json:
-                _out(results, use_json=True)
-            else:
-                typer.echo(f"Refreshed {results['refreshed']} source(s)")
-                if results["changed"]:
-                    typer.echo(f"  Changed:     {results['changed']}")
-                if results["unreachable"]:
-                    typer.echo(f"  Unreachable: {results['unreachable']}")
-                for d in results["details"]:
-                    if d["status"] not in ("unchanged", "not_modified"):
-                        typer.echo(f"  {d['id']}  {d['status']}  {d['url']}")
-        finally:
-            await circuit.close()
-
-    _run(_refresh())
-
-
-# -------------------------------------------------------------------
-# export / import
-# -------------------------------------------------------------------
-
-
-@app.command(name="export")
-def export_cmd(
-    output: Path = typer.Option(..., "--output", "-o", help="Output file path"),
-    format: str = typer.Option("tar", "--format", help="Export format: tar, json, qabot"),
-    include_embeddings: bool = typer.Option(False, "--include-embeddings", help="Include embeddings in JSON export"),
-    as_json: bool = typer.Option(False, "--json", help="Output result as JSON"),
-    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
-) -> None:
-    """Export the brain for backup or deployment.
-
-    Formats:
-      tar   — Full .spikuit/ archive (default)
-      json  — Portable JSON bundle (neurons, synapses, sources)
-      qabot — Read-only SQLite for QABot deployment
-    """
-
-    async def _export():
-        config = _load_brain_config(brain)
-
-        if format == "tar":
-            _export_tar(config, output)
-        elif format == "json":
-            await _export_json(config, output, include_embeddings, brain)
-        elif format == "qabot":
-            await _export_qabot(config, output, brain)
-        else:
-            typer.echo(f"Unknown format: {format}", err=True)
-            raise typer.Exit(1)
-
-        if as_json:
-            _out({"format": format, "output": str(output), "size": output.stat().st_size}, use_json=True)
-        else:
-            size_kb = output.stat().st_size / 1024
-            typer.echo(f"Exported ({format}) → {output} ({size_kb:.1f} KB)")
-
-    _run(_export())
-
-
-def _export_tar(config: BrainConfig, output: Path) -> None:
-    """Export .spikuit/ as a tar.gz archive."""
-    import tarfile
-
-    spikuit_dir = config.spikuit_dir
-    if not spikuit_dir.exists():
-        typer.echo(f".spikuit/ not found at {config.root}", err=True)
-        raise typer.Exit(1)
-
-    with tarfile.open(output, "w:gz") as tar:
-        tar.add(spikuit_dir, arcname=".spikuit")
-
-
-async def _export_json(config: BrainConfig, output: Path, include_embeddings: bool, brain_path: Path | None) -> None:
-    """Export brain as a JSON bundle."""
-    import struct
-
-    circuit = _get_circuit(brain_path)
-    await circuit.connect()
-    try:
-        neurons = await circuit.list_neurons(limit=100_000)
-        sources = await circuit.list_sources(limit=100_000)
-
-        # Collect synapses from graph
-        synapses = []
-        for u, v, data in circuit.graph.edges(data=True):
-            synapses.append({
-                "pre_id": u,
-                "post_id": v,
-                "type": data.get("type", "relates_to"),
-                "weight": data.get("weight", 0.5),
-                "co_fires": data.get("co_fires", 0),
-            })
-
-        # Collect neuron-source links
-        neuron_sources = []
-        for n in neurons:
-            nsources = await circuit.get_sources_for_neuron(n.id)
-            for s in nsources:
-                neuron_sources.append({"neuron_id": n.id, "source_id": s.id})
-
-        bundle: dict = {
-            "version": "0.4.0",
-            "brain_name": config.name,
-            "neurons": [
-                {
-                    "id": n.id,
-                    "content": n.content,
-                    "type": n.type,
-                    "domain": n.domain,
-                    "created_at": str(n.created_at),
-                    "updated_at": str(n.updated_at),
-                }
-                for n in neurons
-            ],
-            "synapses": synapses,
-            "sources": [
-                {
-                    "id": s.id,
-                    "url": s.url,
-                    "title": s.title,
-                    "author": s.author,
-                    "content_hash": s.content_hash,
-                    "filterable": s.filterable,
-                    "searchable": s.searchable,
-                    "status": s.status,
-                    "created_at": str(s.created_at),
-                }
-                for s in sources
-            ],
-            "neuron_sources": neuron_sources,
-            "communities": circuit.community_map(),
-        }
-
-        if include_embeddings:
-            emb_map = {}
-            for n in neurons:
-                rows = await circuit._db.conn.execute_fetchall(
-                    "SELECT vec FROM neuron_vec WHERE rowid IN (SELECT rowid FROM neuron_vec_map WHERE neuron_id = ?)",
-                    (n.id,),
-                )
-                if rows:
-                    blob = rows[0]["vec"]
-                    dim = len(blob) // 4
-                    vec = list(struct.unpack(f"{dim}f", blob))
-                    emb_map[n.id] = vec
-            bundle["embeddings"] = emb_map
-
-        output.write_text(json.dumps(bundle, ensure_ascii=False, default=str, indent=2))
-    finally:
-        await circuit.close()
-
-
-async def _export_qabot(config: BrainConfig, output: Path, brain_path: Path | None) -> None:
-    """Export a read-only QABot SQLite bundle."""
-    import shutil
-    import sqlite3
-
-    circuit = _get_circuit(brain_path)
-    await circuit.connect()
-    try:
-        # Create a new SQLite DB with only what QABot needs
-        if output.exists():
-            output.unlink()
-
-        conn = sqlite3.connect(str(output))
-        conn.execute("PRAGMA journal_mode=WAL")
-
-        # Create tables
-        conn.executescript("""
-            CREATE TABLE neuron (
-                id TEXT PRIMARY KEY,
-                content TEXT NOT NULL,
-                type TEXT,
-                domain TEXT,
-                community_id INTEGER,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            );
-            CREATE TABLE synapse (
-                pre_id TEXT NOT NULL,
-                post_id TEXT NOT NULL,
-                type TEXT NOT NULL,
-                weight REAL DEFAULT 0.5,
-                co_fires INTEGER DEFAULT 0,
-                PRIMARY KEY (pre_id, post_id)
-            );
-            CREATE TABLE source (
-                id TEXT PRIMARY KEY,
-                url TEXT,
-                title TEXT,
-                author TEXT,
-                filterable TEXT,
-                searchable TEXT,
-                created_at TEXT NOT NULL
-            );
-            CREATE TABLE neuron_source (
-                neuron_id TEXT NOT NULL,
-                source_id TEXT NOT NULL,
-                PRIMARY KEY (neuron_id, source_id)
-            );
-        """)
-
-        # Copy neurons
-        neurons = await circuit.list_neurons(limit=100_000)
-        for n in neurons:
-            cid = circuit.get_community(n.id)
-            conn.execute(
-                "INSERT INTO neuron VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (n.id, n.content, n.type, n.domain, cid, str(n.created_at), str(n.updated_at)),
-            )
-
-        # Copy synapses
-        for u, v, data in circuit.graph.edges(data=True):
-            conn.execute(
-                "INSERT INTO synapse VALUES (?, ?, ?, ?, ?)",
-                (u, v, data.get("type", "relates_to"), data.get("weight", 0.5), data.get("co_fires", 0)),
-            )
-
-        # Copy sources (citation-only: no raw content, no freshness)
-        sources = await circuit.list_sources(limit=100_000)
-        for s in sources:
-            conn.execute(
-                "INSERT INTO source VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (
-                    s.id, s.url, s.title, s.author,
-                    json.dumps(s.filterable) if s.filterable else None,
-                    json.dumps(s.searchable) if s.searchable else None,
-                    str(s.created_at),
-                ),
-            )
-
-        # Copy neuron-source links
-        for n in neurons:
-            nsources = await circuit.get_sources_for_neuron(n.id)
-            for s in nsources:
-                conn.execute(
-                    "INSERT INTO neuron_source VALUES (?, ?)",
-                    (n.id, s.id),
-                )
-
-        # Copy embeddings if they exist
-        try:
-            src_db = circuit._db
-            # Read all embeddings from source
-            rows = await src_db.conn.execute_fetchall(
-                "SELECT neuron_id FROM neuron_vec_map"
-            )
-            if rows:
-                # Copy vec data via raw SQL
-                import struct
-                conn.execute("""CREATE TABLE neuron_embedding (
-                    neuron_id TEXT PRIMARY KEY,
-                    vec BLOB NOT NULL
-                )""")
-                for row in rows:
-                    nid = row["neuron_id"]
-                    vec_rows = await src_db.conn.execute_fetchall(
-                        "SELECT vec FROM neuron_vec WHERE rowid IN (SELECT rowid FROM neuron_vec_map WHERE neuron_id = ?)",
-                        (nid,),
-                    )
-                    if vec_rows:
-                        conn.execute(
-                            "INSERT INTO neuron_embedding VALUES (?, ?)",
-                            (nid, vec_rows[0]["vec"]),
-                        )
-        except Exception:
-            pass  # No embeddings, that's fine
-
-        # Mark as QABot bundle
-        conn.execute("PRAGMA application_id = 1936158836")  # 'spkt' as int
-        conn.commit()
-        conn.execute("VACUUM")
-        conn.close()
-    finally:
-        await circuit.close()
-
-
-@app.command(name="import")
-def import_cmd(
-    input_path: Path = typer.Argument(..., help="Archive file to import (.tar.gz)"),
-    target: Optional[Path] = typer.Option(None, "--target", help="Target directory (default: CWD)"),
-    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
-) -> None:
-    """Import a brain from a tar.gz archive."""
-    import tarfile
-
-    if not input_path.exists():
-        typer.echo(f"File not found: {input_path}", err=True)
-        raise typer.Exit(1)
-
-    dest = target or Path.cwd()
-    spikuit_dir = dest / ".spikuit"
-
-    if spikuit_dir.exists():
-        typer.echo(f".spikuit/ already exists at {dest}. Remove it first or use a different target.", err=True)
-        raise typer.Exit(1)
-
-    with tarfile.open(input_path, "r:gz") as tar:
-        tar.extractall(path=dest)
-
-    if as_json:
-        _out({"imported": str(input_path), "target": str(dest)}, use_json=True)
-    else:
-        typer.echo(f"Imported {input_path} → {dest}/.spikuit/")
-
-
-# -------------------------------------------------------------------
-# domain (subcommand group)
-# -------------------------------------------------------------------
-
-domain_app = typer.Typer(help="Manage domains.")
-app.add_typer(domain_app, name="domain")
-
-
-@domain_app.command(name="rename")
-def domain_rename(
-    old: str = typer.Argument(..., help="Current domain name"),
-    new: str = typer.Argument(..., help="New domain name"),
-    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
-    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
-) -> None:
-    """Rename a domain (batch update all neurons)."""
-
-    async def _rename():
-        circuit = _get_circuit(brain)
-        await circuit.connect()
-        try:
-            count = await circuit.rename_domain(old, new)
-            if as_json:
-                _out({"old": old, "new": new, "updated": count}, use_json=True)
-            else:
-                typer.echo(f"Renamed '{old}' → '{new}' ({count} neurons updated)")
-        finally:
-            await circuit.close()
-
-    _run(_rename())
-
-
-@domain_app.command(name="merge")
-def domain_merge(
-    domains: list[str] = typer.Argument(..., help="Domains to merge"),
-    into: str = typer.Option(..., "--into", help="Target domain name"),
-    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
-    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
-) -> None:
-    """Merge multiple domains into one target domain."""
-
-    async def _merge():
-        circuit = _get_circuit(brain)
-        await circuit.connect()
-        try:
-            count = await circuit.merge_domains(domains, into)
-            if as_json:
-                _out({"merged": domains, "into": into, "updated": count}, use_json=True)
-            else:
-                typer.echo(f"Merged {domains} → '{into}' ({count} neurons updated)")
-        finally:
-            await circuit.close()
-
-    _run(_merge())
-
-
-# -------------------------------------------------------------------
-# source (subcommand group)
-# -------------------------------------------------------------------
-
-source_app = typer.Typer(help="Manage sources.")
-app.add_typer(source_app, name="source")
-
-
-@source_app.command(name="list")
-def source_list(
-    limit: int = typer.Option(100, "--limit", "-n", help="Max sources to show"),
-    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
-    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
-) -> None:
-    """List sources with neuron counts."""
-
-    async def _source_list():
-        circuit = _get_circuit(brain)
-        await circuit.connect()
-        try:
-            sources = await circuit.list_sources(limit=limit)
-            if as_json:
-                out = []
-                for s in sources:
-                    nids = await circuit.get_neurons_for_source(s.id)
-                    out.append({
-                        "id": s.id,
-                        "url": s.url,
-                        "title": s.title,
-                        "neuron_count": len(nids),
-                        "content_hash": s.content_hash,
-                        "filterable": s.filterable,
-                        "searchable": s.searchable,
-                        "created_at": str(s.created_at),
-                    })
-                _out(out, use_json=True)
-            else:
-                if not sources:
-                    typer.echo("No sources found.")
-                    return
-                typer.echo(f"{len(sources)} source(s):")
-                for s in sources:
-                    nids = await circuit.get_neurons_for_source(s.id)
-                    typer.echo(f"  {s.id}  {s.title or '-':30s}  {len(nids)} neurons  {s.url or '-'}")
-        finally:
-            await circuit.close()
-
-    _run(_source_list())
-
-
-@source_app.command(name="inspect")
-def source_inspect(
-    source_id: str = typer.Argument(..., help="Source ID"),
-    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
-    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
-) -> None:
-    """Show source details and attached neurons."""
-
-    async def _source_inspect():
-        circuit = _get_circuit(brain)
-        await circuit.connect()
-        try:
-            src = await circuit.get_source(source_id)
-            if not src:
-                typer.echo(f"Source not found: {source_id}", err=True)
-                raise typer.Exit(1)
-
-            nids = await circuit.get_neurons_for_source(source_id)
-
-            if as_json:
-                _out({
-                    "id": src.id,
-                    "url": src.url,
-                    "title": src.title,
-                    "author": src.author,
-                    "section": src.section,
-                    "excerpt": src.excerpt,
-                    "storage_uri": src.storage_uri,
-                    "content_hash": src.content_hash,
-                    "notes": src.notes,
-                    "filterable": src.filterable,
-                    "searchable": src.searchable,
-                    "accessed_at": str(src.accessed_at) if src.accessed_at else None,
-                    "created_at": str(src.created_at),
-                    "neuron_ids": nids,
-                }, use_json=True)
-            else:
-                typer.echo(f"Source: {src.id}")
-                typer.echo(f"  URL:          {src.url or '-'}")
-                typer.echo(f"  Title:        {src.title or '-'}")
-                typer.echo(f"  Author:       {src.author or '-'}")
-                typer.echo(f"  Content hash: {src.content_hash or '-'}")
-                typer.echo(f"  Storage:      {src.storage_uri or '-'}")
-                if src.filterable:
-                    typer.echo(f"  Filterable:   {json.dumps(src.filterable)}")
-                if src.searchable:
-                    typer.echo(f"  Searchable:   {json.dumps(src.searchable)}")
-                typer.echo(f"  Neurons:      {len(nids)}")
-                for nid in nids:
-                    n = await circuit.get_neuron(nid)
-                    title = _extract_title(n.content) if n else nid
-                    typer.echo(f"    {nid}  {title}")
-        finally:
-            await circuit.close()
-
-    _run(_source_inspect())
-
-
-@source_app.command(name="update")
-def source_update(
-    source_id: str = typer.Argument(..., help="Source ID"),
-    url: Optional[str] = typer.Option(None, "--url", help="New URL"),
-    title: Optional[str] = typer.Option(None, "--title", help="New title"),
-    author: Optional[str] = typer.Option(None, "--author", help="New author"),
-    notes: Optional[str] = typer.Option(None, "--notes", help="New notes"),
-    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
-    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
-) -> None:
-    """Update source metadata fields."""
-
-    async def _source_update():
-        circuit = _get_circuit(brain)
-        await circuit.connect()
-        try:
-            src = await circuit.get_source(source_id)
-            if not src:
-                typer.echo(f"Source not found: {source_id}", err=True)
-                raise typer.Exit(1)
-
-            if url is not None:
-                src.url = url
-            if title is not None:
-                src.title = title
-            if author is not None:
-                src.author = author
-            if notes is not None:
-                src.notes = notes
-
-            await circuit.update_source(src)
-
-            if as_json:
-                _out({"id": src.id, "url": src.url, "title": src.title, "author": src.author, "notes": src.notes}, use_json=True)
-            else:
-                typer.echo(f"Updated source {src.id}")
-        finally:
-            await circuit.close()
-
-    _run(_source_update())
 
 
 # -------------------------------------------------------------------
@@ -1976,7 +1152,6 @@ def visualize(
             # Build legend HTML
             legend_items = ""
             if use_community_colors:
-                # Group by community
                 groups: dict[int, int] = {}
                 for nid, cid in cmap.items():
                     groups[cid] = groups.get(cid, 0) + 1
@@ -2017,146 +1192,442 @@ def visualize(
 
 
 # -------------------------------------------------------------------
-# skills
+# export / import
 # -------------------------------------------------------------------
 
-skills_app = typer.Typer(help="Manage Spikuit skills for Agent CLIs.")
-app.add_typer(skills_app, name="skills")
 
-
-@skills_app.command(name="install")
-def skills_install(
-    target: Optional[Path] = typer.Option(None, "--target", "-t", help="Target directory (default: .claude/skills/)"),
+@app.command(name="export")
+def export_cmd(
+    output: Path = typer.Option(..., "--output", "-o", help="Output file path"),
+    format: str = typer.Option("tar", "--format", help="Export format: tar, json, qabot"),
+    include_embeddings: bool = typer.Option(False, "--include-embeddings", help="Include embeddings in JSON export"),
+    as_json: bool = typer.Option(False, "--json", help="Output result as JSON"),
+    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
 ) -> None:
-    """Install Spikuit skills (SKILL.md) for Agent CLIs.
+    """Export the brain for backup or deployment.
 
-    Copies /tutor, /learn, and /qabot skill definitions into the target
-    directory so they can be invoked from Agent CLIs like Claude Code.
+    Formats:
+      tar   — Full .spikuit/ archive (default)
+      json  — Portable JSON bundle (neurons, synapses, sources)
+      qabot — Read-only SQLite for QABot deployment
     """
-    import importlib.resources
-    import shutil
 
-    # Determine source: bundled skills inside this package
-    skills_pkg = importlib.resources.files("spikuit_cli") / "skills"
+    async def _export():
+        config = _load_brain_config(brain)
 
-    # Determine target
-    if target is None:
-        target = Path.cwd() / ".claude" / "skills"
+        if format == "tar":
+            _export_tar(config, output)
+        elif format == "json":
+            await _export_json(config, output, include_embeddings, brain)
+        elif format == "qabot":
+            await _export_qabot(config, output, brain)
+        else:
+            typer.echo(f"Unknown format: {format}", err=True)
+            raise typer.Exit(1)
 
-    target = Path(target)
-    skill_names = ["tutor", "learn", "qabot"]
+        if as_json:
+            _out({"format": format, "output": str(output), "size": output.stat().st_size}, use_json=True)
+        else:
+            size_kb = output.stat().st_size / 1024
+            typer.echo(f"Exported ({format}) \u2192 {output} ({size_kb:.1f} KB)")
 
-    installed = 0
-    for name in skill_names:
-        src = skills_pkg / name / "SKILL.md"
-        if not src.is_file():
-            typer.echo(f"  skip {name}: SKILL.md not found in package", err=True)
-            continue
+    _run(_export())
 
-        dest_dir = target / name
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        dest_file = dest_dir / "SKILL.md"
 
-        # Read from package resources and write to target
-        content = src.read_text(encoding="utf-8")
-        dest_file.write_text(content, encoding="utf-8")
-        installed += 1
+def _export_tar(config: BrainConfig, output: Path) -> None:
+    """Export .spikuit/ as a tar.gz archive."""
+    import tarfile
 
-    if installed > 0:
-        typer.echo(f"Installed {installed} skill(s) to {target}/")
-        for name in skill_names:
-            if (target / name / "SKILL.md").exists():
-                typer.echo(f"  /{name}")
-    else:
-        typer.echo("No skills installed.", err=True)
+    spikuit_dir = config.spikuit_dir
+    if not spikuit_dir.exists():
+        typer.echo(f".spikuit/ not found at {config.root}", err=True)
         raise typer.Exit(1)
 
-
-@skills_app.command(name="list")
-def skills_list() -> None:
-    """List available Spikuit skills."""
-    import importlib.resources
-
-    skills_pkg = importlib.resources.files("spikuit_cli") / "skills"
-    skill_names = ["tutor", "learn", "qabot"]
-
-    typer.echo("Available skills:")
-    for name in skill_names:
-        src = skills_pkg / name / "SKILL.md"
-        if src.is_file():
-            # Read first description line from frontmatter
-            content = src.read_text(encoding="utf-8")
-            desc = ""
-            in_frontmatter = False
-            for line in content.splitlines():
-                if line.strip() == "---":
-                    in_frontmatter = not in_frontmatter
-                    continue
-                if in_frontmatter and line.startswith("description:"):
-                    desc = line.split(":", 1)[1].strip()[:80]
-                    break
-            typer.echo(f"  /{name:8s} {desc}")
+    with tarfile.open(output, "w:gz") as tar:
+        tar.add(spikuit_dir, arcname=".spikuit")
 
 
-# -------------------------------------------------------------------
-# Helpers
-# -------------------------------------------------------------------
+async def _export_json(config: BrainConfig, output: Path, include_embeddings: bool, brain_path: Path | None) -> None:
+    """Export brain as a JSON bundle."""
+    circuit = _get_circuit(brain_path)
+    await circuit.connect()
+    try:
+        neurons = await circuit.list_neurons(limit=100_000)
+        sources = await circuit.list_sources(limit=100_000)
+
+        # Collect synapses from graph
+        synapses = []
+        for u, v, data in circuit.graph.edges(data=True):
+            synapses.append({
+                "pre_id": u,
+                "post_id": v,
+                "type": data.get("type", "relates_to"),
+                "weight": data.get("weight", 0.5),
+                "co_fires": data.get("co_fires", 0),
+            })
+
+        # Collect neuron-source links
+        neuron_sources = []
+        for n in neurons:
+            nsources = await circuit.get_sources_for_neuron(n.id)
+            for s in nsources:
+                neuron_sources.append({"neuron_id": n.id, "source_id": s.id})
+
+        bundle: dict = {
+            "version": "0.4.0",
+            "brain_name": config.name,
+            "neurons": [
+                {
+                    "id": n.id,
+                    "content": n.content,
+                    "type": n.type,
+                    "domain": n.domain,
+                    "created_at": str(n.created_at),
+                    "updated_at": str(n.updated_at),
+                }
+                for n in neurons
+            ],
+            "synapses": synapses,
+            "sources": [
+                {
+                    "id": s.id,
+                    "url": s.url,
+                    "title": s.title,
+                    "author": s.author,
+                    "content_hash": s.content_hash,
+                    "filterable": s.filterable,
+                    "searchable": s.searchable,
+                    "status": s.status,
+                    "created_at": str(s.created_at),
+                }
+                for s in sources
+            ],
+            "neuron_sources": neuron_sources,
+            "communities": circuit.community_map(),
+        }
+
+        if include_embeddings:
+            emb_map = {}
+            for n in neurons:
+                rows = await circuit._db.conn.execute_fetchall(
+                    "SELECT vec FROM neuron_vec WHERE rowid IN (SELECT rowid FROM neuron_vec_map WHERE neuron_id = ?)",
+                    (n.id,),
+                )
+                if rows:
+                    blob = rows[0]["vec"]
+                    dim = len(blob) // 4
+                    vec = list(struct.unpack(f"{dim}f", blob))
+                    emb_map[n.id] = vec
+            bundle["embeddings"] = emb_map
+
+        output.write_text(json.dumps(bundle, ensure_ascii=False, default=str, indent=2))
+    finally:
+        await circuit.close()
 
 
-def _install_agent_skills(brain_root: Path) -> None:
-    """Interactive Agent CLI selection and skills installation."""
-    import importlib.resources
+async def _export_qabot(config: BrainConfig, output: Path, brain_path: Path | None) -> None:
+    """Export a read-only QABot SQLite bundle."""
+    import sqlite3
 
-    agents = {
-        "1": ("Claude Code", ".claude/skills"),
-        "2": ("Cursor", ".cursor/skills"),
-        "3": ("Codex", ".codex/skills"),
-    }
+    circuit = _get_circuit(brain_path)
+    await circuit.connect()
+    try:
+        if output.exists():
+            output.unlink()
 
-    typer.echo("Which Agent CLI do you use?")
-    for key, (name, _) in agents.items():
-        typer.echo(f"  {key}) {name}")
+        conn = sqlite3.connect(str(output))
+        conn.execute("PRAGMA journal_mode=WAL")
 
-    choice = typer.prompt("Select", default="1")
-    if choice not in agents:
-        typer.echo(f"Invalid choice: {choice}", err=True)
-        return
+        conn.executescript("""
+            CREATE TABLE neuron (
+                id TEXT PRIMARY KEY,
+                content TEXT NOT NULL,
+                type TEXT,
+                domain TEXT,
+                community_id INTEGER,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE synapse (
+                pre_id TEXT NOT NULL,
+                post_id TEXT NOT NULL,
+                type TEXT NOT NULL,
+                weight REAL DEFAULT 0.5,
+                co_fires INTEGER DEFAULT 0,
+                PRIMARY KEY (pre_id, post_id)
+            );
+            CREATE TABLE source (
+                id TEXT PRIMARY KEY,
+                url TEXT,
+                title TEXT,
+                author TEXT,
+                filterable TEXT,
+                searchable TEXT,
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE neuron_source (
+                neuron_id TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                PRIMARY KEY (neuron_id, source_id)
+            );
+        """)
 
-    agent_name, skills_rel = agents[choice]
-    target = brain_root / skills_rel
+        neurons = await circuit.list_neurons(limit=100_000)
+        for n in neurons:
+            cid = circuit.get_community(n.id)
+            conn.execute(
+                "INSERT INTO neuron VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (n.id, n.content, n.type, n.domain, cid, str(n.created_at), str(n.updated_at)),
+            )
 
-    skills_pkg = importlib.resources.files("spikuit_cli") / "skills"
-    skill_names = ["tutor", "learn", "qabot"]
+        for u, v, data in circuit.graph.edges(data=True):
+            conn.execute(
+                "INSERT INTO synapse VALUES (?, ?, ?, ?, ?)",
+                (u, v, data.get("type", "relates_to"), data.get("weight", 0.5), data.get("co_fires", 0)),
+            )
 
-    installed = 0
-    for name in skill_names:
-        src = skills_pkg / name / "SKILL.md"
-        if not src.is_file():
-            continue
-        dest_dir = target / name
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        content = src.read_text(encoding="utf-8")
-        (dest_dir / "SKILL.md").write_text(content, encoding="utf-8")
-        installed += 1
+        sources = await circuit.list_sources(limit=100_000)
+        for s in sources:
+            conn.execute(
+                "INSERT INTO source VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    s.id, s.url, s.title, s.author,
+                    json.dumps(s.filterable) if s.filterable else None,
+                    json.dumps(s.searchable) if s.searchable else None,
+                    str(s.created_at),
+                ),
+            )
 
-    if installed > 0:
-        typer.echo(f"\nInstalled {installed} skill(s) for {agent_name} at {target}/")
-        for name in skill_names:
-            if (target / name / "SKILL.md").exists():
-                typer.echo(f"  /{name}")
+        for n in neurons:
+            nsources = await circuit.get_sources_for_neuron(n.id)
+            for s in nsources:
+                conn.execute(
+                    "INSERT INTO neuron_source VALUES (?, ?)",
+                    (n.id, s.id),
+                )
+
+        # Copy embeddings if they exist
+        try:
+            src_db = circuit._db
+            rows = await src_db.conn.execute_fetchall(
+                "SELECT neuron_id FROM neuron_vec_map"
+            )
+            if rows:
+                conn.execute("""CREATE TABLE neuron_embedding (
+                    neuron_id TEXT PRIMARY KEY,
+                    vec BLOB NOT NULL
+                )""")
+                for row in rows:
+                    nid = row["neuron_id"]
+                    vec_rows = await src_db.conn.execute_fetchall(
+                        "SELECT vec FROM neuron_vec WHERE rowid IN (SELECT rowid FROM neuron_vec_map WHERE neuron_id = ?)",
+                        (nid,),
+                    )
+                    if vec_rows:
+                        conn.execute(
+                            "INSERT INTO neuron_embedding VALUES (?, ?)",
+                            (nid, vec_rows[0]["vec"]),
+                        )
+        except Exception:
+            pass  # No embeddings, that's fine
+
+        conn.execute("PRAGMA application_id = 1936158836")  # 'spkt' as int
+        conn.commit()
+        conn.execute("VACUUM")
+        conn.close()
+    finally:
+        await circuit.close()
+
+
+@app.command(name="import")
+def import_cmd(
+    input_path: Path = typer.Argument(..., help="Archive file to import (.tar.gz)"),
+    target: Optional[Path] = typer.Option(None, "--target", help="Target directory (default: CWD)"),
+    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
+) -> None:
+    """Import a brain from a tar.gz archive."""
+    import tarfile
+
+    if not input_path.exists():
+        typer.echo(f"File not found: {input_path}", err=True)
+        raise typer.Exit(1)
+
+    dest = target or Path.cwd()
+    spikuit_dir = dest / ".spikuit"
+
+    if spikuit_dir.exists():
+        typer.echo(f".spikuit/ already exists at {dest}. Remove it first or use a different target.", err=True)
+        raise typer.Exit(1)
+
+    with tarfile.open(input_path, "r:gz") as tar:
+        tar.extractall(path=dest)
+
+    if as_json:
+        _out({"imported": str(input_path), "target": str(dest)}, use_json=True)
     else:
-        typer.echo("No skills installed.", err=True)
+        typer.echo(f"Imported {input_path} \u2192 {dest}/.spikuit/")
 
 
-def _extract_title(content: str) -> str:
-    """Extract first heading or first line as title."""
-    for line in content.splitlines():
-        line = line.strip()
-        if line.startswith("#"):
-            return line.lstrip("#").strip()
-        if line and not line.startswith("---"):
-            return line[:60]
-    return "(untitled)"
+# -------------------------------------------------------------------
+# Deprecation wrappers (hidden, removed in v0.6.0)
+# -------------------------------------------------------------------
+
+_DEPRECATION_MAP = {
+    "add": "neuron add",
+    "fire": "neuron fire",
+    "due": "neuron due",
+    "list": "neuron list",
+    "link": "synapse add",
+    "inspect": "neuron inspect",
+    "communities": "community list/detect",
+    "learn": "source learn",
+    "refresh": "source refresh",
+}
+
+
+def _deprecation_warning(old: str) -> None:
+    new = _DEPRECATION_MAP[old]
+    typer.echo(f"DeprecationWarning: 'spkt {old}' is deprecated. Use 'spkt {new}' instead.", err=True)
+
+
+from .commands.neuron import (
+    neuron_add,
+    neuron_due,
+    neuron_fire,
+    neuron_inspect,
+    neuron_list,
+)
+from .commands.source import source_learn, source_refresh
+from .commands.synapse import synapse_add
+
+
+@app.command(name="add", hidden=True)
+def add_deprecated(
+    content: str = typer.Argument(..., help="Markdown content for the neuron"),
+    type: Optional[str] = typer.Option(None, "--type", "-t", help="Neuron type"),
+    domain: Optional[str] = typer.Option(None, "--domain", "-d", help="Domain tag"),
+    source_url: Optional[str] = typer.Option(None, "--source-url", help="Source URL for citation"),
+    source_title: Optional[str] = typer.Option(None, "--source-title", help="Source title"),
+    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
+    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
+) -> None:
+    """[Deprecated] Use 'spkt neuron add' instead."""
+    _deprecation_warning("add")
+    neuron_add(content=content, type=type, domain=domain, source_url=source_url, source_title=source_title, as_json=as_json, brain=brain)
+
+
+@app.command(name="fire", hidden=True)
+def fire_deprecated(
+    neuron_id: str = typer.Argument(..., help="Neuron ID to fire"),
+    grade: str = typer.Option("fire", "--grade", "-g", help="Grade: miss|weak|fire|strong"),
+    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
+    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
+) -> None:
+    """[Deprecated] Use 'spkt neuron fire' instead."""
+    _deprecation_warning("fire")
+    neuron_fire(neuron_id=neuron_id, grade=grade, as_json=as_json, brain=brain)
+
+
+@app.command(name="due", hidden=True)
+def due_deprecated(
+    limit: int = typer.Option(20, "--limit", "-n", help="Max neurons to show"),
+    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
+    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
+) -> None:
+    """[Deprecated] Use 'spkt neuron due' instead."""
+    _deprecation_warning("due")
+    neuron_due(limit=limit, as_json=as_json, brain=brain)
+
+
+@app.command(name="list", hidden=True)
+def list_deprecated(
+    type: Optional[str] = typer.Option(None, "--type", "-t", help="Filter by type"),
+    domain: Optional[str] = typer.Option(None, "--domain", "-d", help="Filter by domain"),
+    limit: int = typer.Option(50, "--limit", "-n", help="Max neurons to show"),
+    meta_keys: bool = typer.Option(False, "--meta-keys", help="List filterable/searchable metadata keys"),
+    meta_values: Optional[str] = typer.Option(None, "--meta-values", help="List distinct values for a metadata key"),
+    domains: bool = typer.Option(False, "--domains", help="List domains with neuron counts"),
+    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
+    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
+) -> None:
+    """[Deprecated] Use 'spkt neuron list' or 'spkt domain list' instead."""
+    if domains:
+        _deprecation_warning("list")
+        typer.echo("Hint: use 'spkt domain list' for domain listing.", err=True)
+        from .commands.domain import domain_list
+        domain_list(as_json=as_json, brain=brain)
+    else:
+        _deprecation_warning("list")
+        neuron_list(type=type, domain=domain, limit=limit, meta_keys=meta_keys, meta_values=meta_values, as_json=as_json, brain=brain)
+
+
+@app.command(name="link", hidden=True)
+def link_deprecated(
+    pre: str = typer.Argument(..., help="Source neuron ID"),
+    post: str = typer.Argument(..., help="Target neuron ID"),
+    type: str = typer.Option("relates_to", "--type", "-t", help="Synapse type"),
+    weight: float = typer.Option(0.5, "--weight", "-w", help="Initial weight"),
+    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
+    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
+) -> None:
+    """[Deprecated] Use 'spkt synapse add' instead."""
+    _deprecation_warning("link")
+    synapse_add(pre=pre, post=post, type=type, weight=weight, as_json=as_json, brain=brain)
+
+
+@app.command(name="inspect", hidden=True)
+def inspect_deprecated(
+    neuron_id: str = typer.Argument(..., help="Neuron ID to inspect"),
+    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
+    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
+) -> None:
+    """[Deprecated] Use 'spkt neuron inspect' instead."""
+    _deprecation_warning("inspect")
+    neuron_inspect(neuron_id=neuron_id, as_json=as_json, brain=brain)
+
+
+@app.command(name="communities", hidden=True)
+def communities_deprecated(
+    detect: bool = typer.Option(False, "--detect", help="Force re-detection"),
+    resolution: float = typer.Option(1.0, "--resolution", "-r", help="Louvain resolution"),
+    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
+    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
+) -> None:
+    """[Deprecated] Use 'spkt community detect' or 'spkt community list' instead."""
+    _deprecation_warning("communities")
+    if detect:
+        from .commands.community import community_detect
+        community_detect(resolution=resolution, as_json=as_json, brain=brain)
+    else:
+        from .commands.community import community_list
+        community_list(as_json=as_json, brain=brain)
+
+
+@app.command(name="learn", hidden=True)
+def learn_deprecated(
+    path_or_url: str = typer.Argument(..., help="File path, directory, or URL to ingest"),
+    domain: Optional[str] = typer.Option(None, "--domain", "-d", help="Domain tag"),
+    title: Optional[str] = typer.Option(None, "--title", help="Source title override"),
+    force: bool = typer.Option(False, "--force", help="Force ingest"),
+    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
+    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
+) -> None:
+    """[Deprecated] Use 'spkt source learn' instead."""
+    _deprecation_warning("learn")
+    source_learn(path_or_url=path_or_url, domain=domain, title=title, force=force, as_json=as_json, brain=brain)
+
+
+@app.command(name="refresh", hidden=True)
+def refresh_deprecated(
+    source_id: Optional[str] = typer.Argument(None, help="Source ID to refresh"),
+    stale: Optional[int] = typer.Option(None, "--stale", help="Refresh sources older than N days"),
+    all_sources: bool = typer.Option(False, "--all", help="Refresh all URL sources"),
+    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
+    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
+) -> None:
+    """[Deprecated] Use 'spkt source refresh' instead."""
+    _deprecation_warning("refresh")
+    source_refresh(source_id=source_id, stale=stale, all_sources=all_sources, as_json=as_json, brain=brain)
 
 
 def main() -> None:

@@ -12,7 +12,7 @@ Run an interactive review session using the spkt CLI.
 ### 1. Get due neurons
 
 ```bash
-spkt due --json
+spkt neuron due --json
 ```
 
 If no neurons are due, tell the user and stop.
@@ -24,7 +24,7 @@ Loop through the due neurons one at a time:
 #### 2a. Read the neuron content
 
 ```bash
-spkt inspect <neuron_id> --json
+spkt neuron inspect <neuron_id> --json
 ```
 
 #### 2b. Generate a quiz question
@@ -53,7 +53,7 @@ Tell the user the grade and briefly explain if they were wrong.
 #### 2d. Record the result
 
 ```bash
-spkt fire <neuron_id> --grade <grade> --json
+spkt neuron fire <neuron_id> --grade <grade> --json
 ```
 
 Show the updated FSRS state (next review date).

@@ -2,36 +2,130 @@
 
 **会話で育てるナレッジグラフ**
 
+> *前処理も、チャンキングパイプラインも、メタデータ設計も要らない。
+> ドキュメントを放り込んで、エージェントと話すだけ。*
+
 ---
 
-Spikuit（spike + circuit、発音: /spaɪ.kɪt/）は、ナレッジ管理の最も難しい部分
-— 取り込み、構造化、メンテナンス — をAIエージェントとの対話で自動化する
+Spikuit（spike + circuit、読み: /spaɪ.kɪt/）は、ナレッジ管理で一番面倒な
+取り込み・構造化・メンテナンスを、AIエージェントとの会話だけで回せる
 パーソナルナレッジシステムです。
 
-従来のRAGシステムはデータ整備で破綻します。チャンキング、タグ付け、
-関連付け、鮮度管理。Spikuitはこれを **Conversational Curation**
-（対話型キュレーション）で解決します — 会話するだけでナレッジベースが育ちます。
+従来のRAGはデータ整備で行き詰まります。チャンキング、タグ付け、
+関連付け、鮮度管理 — どれも地味に手間がかかる。Spikuitは
+**Conversational Curation**（対話型キュレーション）でこの問題を解きます。
+会話するだけでナレッジベースが育っていきます。
 
-## 3つのスキル、1つのループ
+## クイックスタート
+
+### 1. インストール
+
+```bash
+pip install spikuit
+```
+
+### 2. Brainを作る
+
+BrainはSpikuitのワークスペースです。`.git/`と同じような感覚で、
+知識を管理したい場所で `spkt init` を実行します。
+
+```bash
+mkdir my-brain && cd my-brain
+spkt init
+```
+
+対話ウィザードでエンベディングの設定を聞かれます。
+まず試すだけなら「none」でOK — あとからいつでも変更できます。
+
+### 3. 知識を入れてみる
+
+```bash
+# コンセプトを追加
+spkt neuron add "# Rustの所有権\n\n値には所有者がひとりだけ。スコープを抜けると値は破棄される。" \
+  -t concept -d rust
+
+# URLからまとめて取り込み
+spkt source learn "https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html" -d rust
+
+# 関連するNeuron同士をつなげる
+spkt synapse add <id-1> <id-2> -t relates_to
+```
+
+### 4. Agent CLIのスキルをセットアップ（おすすめ）
+
+チュータリング、ナレッジキュレーション、Q&Aなどの対話型スキルは、
+[Claude Code](https://docs.anthropic.com/en/docs/claude-code)、
+Cursor、Codexといった**Agent CLI** の上で動きます。
+使うには、スキル定義をインストールしてください。
+
+```bash
+spkt skills install                    # デフォルトは .claude/skills/
+spkt skills install -t .cursor/skills  # 他のAgentを使う場合
+```
+
+スキルファイル（`SKILL.md`）と、エージェント向けのコマンドリファレンス
+（`SPIKUIT.md`）がコピーされます。
+
+### 5. 使い始める
+
+**Agent CLIから：**
+
+```
+You: /spkt-learn
+     圏論を勉強中。FunctorとMonadの定義をBrainに入れて。
+
+Agent: 2個のNeuronを追加、1本のSynapse（Monad --requires--> Functor）を作成。
+
+You: /spkt-qabot
+     FunctorとMonadの関係は？
+
+Agent: MonadはFunctorの上に成り立つ構造で...
+       ソース: n-abc123 (Functor), n-def456 (Monad)
+
+You: /spkt-tutor
+
+Tutor: まずFunctorから — Monadの前提になっています。
+       [教える → クイズ → フィードバック → 弱い部分を再説明]
+
+You: /spkt-curator
+
+Curator: "math"ドメインが2つのコミュニティにまたがっています（代数 vs 解析）。
+         サブドメインに分割しますか？ [Y/n]
+```
+
+**`spkt` コマンドを直接使うこともできます：**
+
+```bash
+spkt retrieve "所有権 借用"                   # ナレッジグラフを検索
+spkt neuron due                             # 復習が必要なNeuronは？
+spkt neuron fire <id> -g fire               # 復習を記録
+spkt diagnose                               # Brainの健全性チェック
+spkt consolidate                            # グラフ構造を最適化
+spkt visualize                              # インタラクティブなHTMLグラフ
+```
+
+全コマンドで `--json` が使えます。
+
+## 3つのスキル + キュレーター
 
 ### `/spkt-learn` — 話して取り込む
 
-記事、メモ、URLをBrainに取り込みます。エージェントがコンテンツを分割し、
-関連を発見し、ナレッジグラフを構築します — あなたは話すだけ。
+記事でもメモでもURL でも、Brainに投げるだけ。エージェントが中身を分割して
+関連を見つけ出し、グラフを組み立てます。
 
 ```
 You: /spkt-learn
      この論文をBrainにまとめて: https://arxiv.org/abs/1706.03762
 
-Agent: 8 neurons追加（Multi-Head Attention, Scaled Dot-Product, ...）。
-       6 synapses作成、引用用にSource紐付け。
+Agent: 8個のNeuronを追加（Multi-Head Attention, Scaled Dot-Product, ...）。
+       6本のSynapseを作成、引用元としてSourceを紐付け。
 ```
 
 ### `/spkt-qabot` — 聞いて引き出す
 
-Brainに自然言語で質問できます。回答にはソースの引用が含まれます。
-検索品質は会話ごとに改善されます — 役に立たない結果は自動的にペナルティされ、
-役立つ結果はブーストされます。
+Brainに自然言語で質問すると、ソース付きで答えが返ってきます。
+使い続けるほど検索の質が上がります — 的外れな結果は自動でペナルティ、
+役に立った結果はブーストされます。
 
 ```
 You: /spkt-qabot
@@ -44,52 +138,37 @@ Agent: Multi-Head Attentionは複数のAttention関数を並列実行し...
 
 ### `/spkt-tutor` — 任せて学ぶ
 
-ナレッジグラフの上に構築されたAIチューター。前提知識を検出し、
-難易度を調整し、間違いにはフィードバックが付きます
-— 「正解」「不正解」だけではありません。
+ナレッジグラフの上に乗ったAIチューター。前提知識を把握して、
+難易度を自動調整し、間違えたら「正解/不正解」で終わらせず
+ちゃんとフィードバックを返します。
 
 ```
 You: /spkt-tutor
 
-Tutor: まずFunctorから始めましょう — 他の2つの前提知識です。
+Tutor: まずFunctorから始めましょう — 他の2つの前提になっています。
        [教える → クイズ → フィードバック → 弱い部分を再説明]
+```
+
+### `/spkt-curator` — 会話でメンテナンス
+
+ドメインとコミュニティのズレを分析して、ラベルの修正、
+孤立Neuronの接続、弱いSynapseの整理を会話ベースで進めます。
+
+```
+You: /spkt-curator
+
+Curator: "math"ドメインが代数と解析で2つに割れています。
+         "math-algebra"と"math-analysis"に分けますか？
 ```
 
 ## 仕組み
 
-1. **スマートなスケジューリング** — 各コンセプトに理解度に基づく復習タイミング
+1. **理解度に応じたスケジューリング** — Neuronごとに復習タイミングを最適化
    （[FSRS](https://github.com/open-spaced-repetition/fsrs4anki)）
-2. **活性化の伝播** — 一つのコンセプトを復習すると、関連コンセプトの
-   復習タイミングが近づく。一緒に使う接続は強くなる。
-3. **検索の最適化** — 関連度 × 記憶の強さ × グラフ中心性でランク付け。
-   フィードバックで継続的に改善。
-
-## クイックスタート
-
-```bash
-# インストール
-pip install spikuit
-
-# Brainの初期化（対話式ウィザード）
-spkt init
-```
-
-Agent CLI（Claude Code、Cursor、Codex）から：
-
-```
-/spkt-learn    → 話して取り込む。会話でナレッジをキュレーション。
-/spkt-qabot    → 聞いて引き出す。引用付きの回答をナレッジグラフから。
-/spkt-tutor    → 任せて学ぶ。レベルに合わせたAIチューターと。
-```
-
-`spkt` コマンドを直接使うこともできます:
-
-```bash
-spkt learn ./papers/ -d cs --json     # ディレクトリ一括取り込み
-spkt retrieve "query" --filter domain=math
-spkt export -o brain.json --format json
-spkt visualize
-```
+2. **活性化の伝播** — ひとつ復習すると、つながっている知識の復習時期も近づく。
+   よく一緒に使う接続ほど強くなる。
+3. **検索の自動改善** — 関連度 × 記憶の強さ × グラフ中心性でランキング。
+   フィードバックで精度が上がり続ける。
 
 ## ドキュメント
 

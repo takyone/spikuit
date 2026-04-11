@@ -3,13 +3,13 @@
 This page covers the technical foundations of Spikuit. For a higher-level
 overview, see [Concepts](concepts.md).
 
-## Theoretical Background
+---
 
-Spikuit draws from three fields:
+## 1. Computational Neuroscience
 
-### Neuroscience
+Spikuit models knowledge dynamics using simplified neural mechanisms.
 
-**Neurons and Spikes**
+### Neurons and Spikes
 
 ```mermaid
 graph LR
@@ -21,7 +21,7 @@ graph LR
 - A neuron accumulates input, fires when it crosses a threshold, then resets
 - In Spikuit: a `Spike` = a review event; firing propagates signal to connected knowledge
 
-**Synaptic Plasticity (STDP)**
+### Synaptic Plasticity (STDP)
 
 > "Neurons that fire together wire together" — Hebb, 1949
 
@@ -36,7 +36,7 @@ Spike-Timing-Dependent Plasticity refines Hebb's rule with temporal direction:
 - Magnitude decays exponentially with `|dt|`
 - In Spikuit: edge weights update based on co-fire timing within `tau_stdp` days (default: 7)
 
-**Leaky Integrate-and-Fire (LIF)**
+### Leaky Integrate-and-Fire (LIF)
 
 <div class="chart-container">
   <canvas data-chart="lif"></canvas>
@@ -46,7 +46,7 @@ Spike-Timing-Dependent Plasticity refines Hebb's rule with temporal direction:
 - High pressure = the system is telling you this concept needs review
 - In Spikuit: neighbor reviews push pressure up, time decays it exponentially
 
-**Spreading Activation**
+### Spreading Activation
 
 ```mermaid
 graph LR
@@ -69,9 +69,30 @@ graph LR
 - Activating a concept in memory primes related concepts (Collins & Loftus, 1975)
 - In Spikuit: reviewing one node sends activation to graph neighbors via APPNP (Personalized PageRank)
 
-### Cognitive / Developmental Psychology
+### Sleep-Inspired Consolidation
 
-**Forgetting Curve and Spaced Repetition**
+Memory consolidation during sleep involves multiple phases:
+
+- **Slow-Wave Sleep (SWS)**: Replays and strengthens important memories
+- **Synaptic Homeostasis (SHY)**: Globally downscales synaptic weights to prevent saturation (Tononi & Cirelli, 2003)
+- **REM**: Reorganizes and abstracts — detects patterns across memories
+
+In Spikuit: `consolidate` runs a 4-phase plan: Triage (classify synapses) → SHY (decay weak connections) → SWS (prune dead weight) → REM (detect consolidation opportunities).
+
+### References — Computational Neuroscience
+
+- Hodgkin, A. L. & Huxley, A. F. (1952). A quantitative description of membrane current and its application to conduction and excitation in nerve. *Journal of Physiology*, 117(4), 500–544.
+- Hebb, D. O. (1949). *The Organization of Behavior*. Wiley.
+- Bi, G. & Poo, M. (1998). Synaptic modifications in cultured hippocampal neurons: dependence on spike timing, synaptic strength, and postsynaptic cell type. *Journal of Neuroscience*, 18(24), 10464–10472.
+- Collins, A. M. & Loftus, E. F. (1975). A spreading-activation theory of semantic processing. *Psychological Review*, 82(6), 407–428.
+- Tononi, G. & Cirelli, C. (2003). Sleep and synaptic homeostasis: a hypothesis. *Brain Research Bulletin*, 62(2), 143–150.
+- Tononi, G. & Cirelli, C. (2014). Sleep and the price of plasticity: from synaptic and cellular homeostasis to memory consolidation and integration. *Neuron*, 81(1), 12–34.
+
+---
+
+## 2. Cognitive & Developmental Psychology
+
+### Forgetting Curve and Spaced Repetition
 
 <div class="chart-container">
   <canvas data-chart="forgetting-curve"></canvas>
@@ -82,13 +103,13 @@ graph LR
 - Optimal timing: review just before you'd forget
 - In Spikuit: FSRS v6 models per-neuron stability and difficulty
 
-**Testing Effect**
+### Testing Effect
 
 - Actively retrieving > passively re-reading (Roediger & Karpicke, 2006)
 - Even failed retrieval attempts improve later recall
 - In Spikuit: the Learn protocol is "present → evaluate", not just "show content"
 
-**ZPD and Scaffolding**
+### ZPD and Scaffolding
 
 <div class="zpd-diagram">
   <div class="zpd-outer">
@@ -107,28 +128,96 @@ graph LR
 - Scaffolding (Wood, Bruner & Ross, 1976): temporary support, gradually removed as competence grows
 - In Spikuit: Scaffold level computed from FSRS state + graph neighbors
 
-**Schema Theory**
+### Schema Theory
 
 - Schemas = mental frameworks that organize knowledge (Bartlett, 1932; Piaget)
 - New info is easier to learn when it connects to existing schemas
 - In Spikuit: the knowledge graph *is* the schema; `LearnSession.ingest()` auto-discovers related concepts
 
-### Graph-Based ML
+### References — Cognitive & Developmental Psychology
 
-**PageRank and APPNP**
+- Ebbinghaus, H. (1885). *Über das Gedächtnis*. Duncker & Humblot. (English translation: *Memory: A Contribution to Experimental Psychology*, 1913.)
+- Bartlett, F. C. (1932). *Remembering: A Study in Experimental and Social Psychology*. Cambridge University Press.
+- Vygotsky, L. S. (1978). *Mind in Society: The Development of Higher Psychological Processes*. Harvard University Press.
+- Wood, D., Bruner, J. S. & Ross, G. (1976). The role of tutoring in problem solving. *Journal of Child Psychology and Psychiatry*, 17(2), 89–100.
+- Roediger, H. L. & Karpicke, J. D. (2006). Test-enhanced learning: taking memory tests improves long-term retention. *Psychological Science*, 17(3), 249–255.
+- Piaget, J. (1952). *The Origins of Intelligence in Children*. International Universities Press.
+
+---
+
+## 3. Spaced Repetition Systems
+
+### FSRS (Free Spaced Repetition Scheduler)
+
+Per-neuron spaced repetition (stability, difficulty, next review date).
+FSRS v6 is a neural-network-based scheduler that outperforms SM-2 (Anki's default)
+on recall prediction accuracy.
+
+- Propagation never touches FSRS state — only affects pressure
+- Each neuron maintains independent stability and difficulty parameters
+- Grade mapping: `miss` → Again, `weak` → Hard, `fire` → Good, `strong` → Easy
+
+### References — Spaced Repetition
+
+- Ye, J. (2024). FSRS: A modern spaced repetition algorithm. [github.com/open-spaced-repetition/fsrs4anki](https://github.com/open-spaced-repetition/fsrs4anki)
+- Wozniak, P. A. & Gorzelanczyk, E. J. (1994). Optimization of repetition spacing in the practice of learning. *Acta Neurobiologiae Experimentalis*, 54, 59–62.
+- Leitner, S. (1972). *So lernt man lernen*. Herder.
+
+---
+
+## 4. Knowledge Graphs & Graph-Based ML
+
+### PageRank and APPNP
 
 - PageRank (Page et al., 1999): score nodes by link structure
 - APPNP (Gasteiger et al., 2019): Personalized PageRank with teleport probability for locality control
 - In Spikuit: used for spreading activation and retrieve scoring
 
+### Community Detection
+
+- Louvain algorithm (Blondel et al., 2008): detects communities by modularity optimization
+- In Spikuit: clusters densely connected neurons, enables community-boosted retrieval and summary generation
+
+### References — Knowledge Graphs & Graph-Based ML
+
+- Page, L., Brin, S., Motwani, R. & Winograd, T. (1999). The PageRank Citation Ranking: Bringing Order to the Web. *Stanford InfoLab Technical Report*.
+- Gasteiger, J., Bojchevski, A. & Günnemann, S. (2019). Predict then Propagate: Graph Neural Networks meet Personalized PageRank. *ICLR 2019*.
+- Blondel, V. D., Guillaume, J.-L., Lambiotte, R. & Lefebvre, E. (2008). Fast unfolding of communities in large networks. *Journal of Statistical Mechanics*, P10008.
+
+---
+
+## 5. Information Retrieval & RAG
+
+### Hybrid Retrieval
+
+Spikuit combines multiple retrieval signals into a single score:
+
+```
+score = max(keyword_sim, semantic_sim) × (1 + retrievability + centrality + pressure + boost)
+```
+
+- **Keyword similarity**: BM25-style text matching
+- **Semantic similarity**: sqlite-vec KNN search when an embedder is configured
+- **Retrievability**: FSRS-based memory strength (concepts you know well rank higher)
+- **Centrality**: graph-structural importance
+- **Pressure**: LIF-based urgency from neighbor reviews
+- **Feedback boost**: accumulated through QABotSession accept/reject signals
+
+### Retrieval-Augmented Generation (RAG)
+
+Traditional RAG pipelines require significant preprocessing: document chunking,
+metadata extraction, embedding pipeline setup. Spikuit replaces this with
+conversational curation — the agent handles chunking, tagging, and connecting
+through dialogue via `/spkt-learn`.
+
+### References — Information Retrieval & RAG
+
+- Robertson, S. & Zaragoza, H. (2009). The Probabilistic Relevance Framework: BM25 and Beyond. *Foundations and Trends in Information Retrieval*, 3(4), 333–389.
+- Lewis, P. et al. (2020). Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks. *NeurIPS 2020*.
+
 ---
 
 ## Algorithm Details
-
-### FSRS
-
-Per-neuron spaced repetition (stability, difficulty, next review date).
-Propagation never touches FSRS state — only affects pressure.
 
 ### APPNP Propagation
 
@@ -156,15 +245,6 @@ Pressure accumulates from neighbor fires, decays exponentially:
 ```
 pressure(t) = pressure * exp(-dt / tau_m)
 ```
-
-### Retrieve Scoring
-
-```
-score = max(keyword_sim, semantic_sim) × (1 + retrievability + centrality + pressure + boost)
-```
-
-Semantic similarity uses sqlite-vec KNN search when an embedder is configured.
-Retrieval boost is accumulated through QABotSession feedback.
 
 ### How `fire()` works
 

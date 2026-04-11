@@ -63,8 +63,8 @@ Tutor: [Assess] Re-test the weak area
 Run at session start and periodically during the session.
 
 ```bash
-spkt due --brain <path> --json           # What's due?
-spkt inspect <id> --brain <path> --json  # Check scaffold, gaps
+spkt neuron due --brain <path> --json           # What's due?
+spkt neuron inspect <id> --brain <path> --json  # Check scaffold, gaps
 ```
 
 Decision rules:
@@ -80,7 +80,7 @@ Teach a concept. Retrieve the neuron content and its neighbors,
 then build an explanation tailored to the learner.
 
 ```bash
-spkt inspect <id> --brain <path> --json  # Content + neighbors
+spkt neuron inspect <id> --brain <path> --json  # Content + neighbors
 ```
 
 Guidelines:
@@ -194,7 +194,7 @@ Guidelines:
 
 Record grades:
 ```bash
-spkt fire <id> -g <grade> --brain <path>
+spkt neuron fire <id> -g <grade> --brain <path>
 ```
 
 ## Hints
@@ -269,8 +269,8 @@ ask the user which brain to use. Use `--brain <path>` with all `spkt` commands.
 ## Commands Used
 
 ```bash
-spkt due --brain <path> --json           # Get due neurons
-spkt inspect <id> --brain <path> --json  # Neuron content + neighbors + scaffold
+spkt neuron due --brain <path> --json           # Get due neurons
+spkt neuron inspect <id> --brain <path> --json  # Neuron content + neighbors + scaffold
 spkt retrieve "<q>" --brain <path> --json # Search for QA / relation discovery
-spkt fire <id> -g <grade> --brain <path> # Record grade
+spkt neuron fire <id> -g <grade> --brain <path> # Record grade
 ```

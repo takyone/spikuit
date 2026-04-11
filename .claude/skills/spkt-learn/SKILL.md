@@ -28,19 +28,19 @@ Common domains: `math`, `cs`, `language`, `philosophy`, `economics`
 For each piece of knowledge:
 
 ```bash
-spkt add "<markdown content>" --type <type> --domain <domain> --json
+spkt neuron add "<markdown content>" --type <type> --domain <domain> --json
 ```
 
 If the knowledge comes from a specific source (URL, paper, etc.), attach it:
 
 ```bash
-spkt add "<content>" --type <type> --domain <domain> --source-url "<url>" --source-title "<title>" --json
+spkt neuron add "<content>" --type <type> --domain <domain> --source-url "<url>" --source-title "<title>" --json
 ```
 
 For bulk ingestion from a URL or file:
 
 ```bash
-spkt learn "<url-or-path>" -d <domain> --json   # fetches content + creates Source
+spkt source learn "<url-or-path>" -d <domain> --json   # fetches content + creates Source
 # then chunk the returned content into neurons with --source-url
 ```
 
@@ -61,7 +61,7 @@ spkt retrieve "<relevant keywords>" --json
 If related neurons exist, create appropriate connections:
 
 ```bash
-spkt link <new_id> <existing_id> --type <synapse_type> --json
+spkt synapse add <new_id> <existing_id> --type <synapse_type> --json
 ```
 
 Choose the synapse type based on the relationship:

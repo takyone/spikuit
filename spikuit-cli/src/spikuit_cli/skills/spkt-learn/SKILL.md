@@ -19,19 +19,19 @@ Stats: !`spkt stats --json 2>/dev/null || echo '{}'`
 1. Receive input (text, concept, notes)
 2. Structure into Markdown neurons (atomic, self-contained, titled)
 3. Check for duplicates: `spkt retrieve "<term>" --json`
-4. Add: `spkt add "<content>" -t <type> -d <domain> --source-url "<url>" --json`
+4. Add: `spkt neuron add "<content>" -t <type> -d <domain> --source-url "<url>" --json`
 5. Discover relations: `spkt retrieve "<content snippet>" --json`
-6. Create synapses: `spkt link <new> <related> -t <type>`
+6. Create synapses: `spkt synapse add <new> <related> -t <type>`
 7. Confirm with user
 
 ### From URL or file (source ingestion)
 
-1. Fetch content: `spkt learn "<url-or-path>" -d <domain> --json`
+1. Fetch content: `spkt source learn "<url-or-path>" -d <domain> --json`
 2. Read the returned `content` and `source_id`
 3. Split content into atomic concepts (chunking)
-4. For each chunk: `spkt add "<chunk>" -t <type> -d <domain> --source-url "<url>" --json`
+4. For each chunk: `spkt neuron add "<chunk>" -t <type> -d <domain> --source-url "<url>" --json`
 5. Discover relations and create synapses as above
-6. After communities change significantly: `spkt communities --detect`
+6. After communities change significantly: `spkt community detect`
 
 ## Structuring Rules
 
@@ -48,7 +48,7 @@ Stats: !`spkt stats --json 2>/dev/null || echo '{}'`
 
 ## Type and Domain
 
-Use existing types/domains from the brain. Check with `spkt list --json`.
+Use existing types/domains from the brain. Check with `spkt neuron list --json`.
 Common types: concept, term, procedure, pattern, design, language
 Common domains: math, cs, french, german, philosophy
 
@@ -112,12 +112,12 @@ Proceed? [Y/n]
 ## Commands
 
 ```bash
-spkt add "<content>" -t <type> -d <domain> --json
-spkt add "<content>" -t <type> -d <domain> --source-url "<url>" --source-title "<title>" --json
-spkt learn "<url-or-path>" -d <domain> --json          # fetch + create Source
+spkt neuron add "<content>" -t <type> -d <domain> --json
+spkt neuron add "<content>" -t <type> -d <domain> --source-url "<url>" --source-title "<title>" --json
+spkt source learn "<url-or-path>" -d <domain> --json    # fetch + create Source
 spkt retrieve "<query>" --json
-spkt link <a> <b> -t <type>
-spkt list --json
-spkt inspect <id> --json                                # includes sources[]
-spkt communities --detect --json                        # re-detect after major ingestion
+spkt synapse add <a> <b> -t <type>
+spkt neuron list --json
+spkt neuron inspect <id> --json                         # includes sources[]
+spkt community detect --json                            # re-detect after major ingestion
 ```

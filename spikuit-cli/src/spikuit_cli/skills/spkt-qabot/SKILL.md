@@ -16,7 +16,7 @@ Stats: !`spkt stats --json 2>/dev/null || echo '{}'`
 
 1. User asks a question
 2. Retrieve: `spkt retrieve "<query>" --json`
-3. For each result, get context: `spkt inspect <id> --json`
+3. For each result, get context: `spkt neuron inspect <id> --json`
 4. Synthesize an answer from retrieved neurons
 5. Show answer with source references
 6. On follow-up: retrieve again (prior results are implicitly penalized if query is similar)
@@ -24,13 +24,13 @@ Stats: !`spkt stats --json 2>/dev/null || echo '{}'`
 ## Answer Guidelines
 
 - **Synthesize**: combine information from multiple neurons
-- **Cite with provenance**: use Source metadata from `spkt inspect --json` for proper citation
+- **Cite with provenance**: use Source metadata from `spkt neuron inspect --json` for proper citation
 - **Acknowledge gaps**: if retrieval doesn't cover the question, say so
 - **Match language**: answer in the same language as the question
 
 ### Citation Format
 
-`spkt inspect <id> --json` returns a `sources` array with `id`, `url`, and `title`.
+`spkt neuron inspect <id> --json` returns a `sources` array with `id`, `url`, and `title`.
 When sources are available, cite them with URL. When no sources are attached, cite by neuron ID.
 
 ```
@@ -78,6 +78,6 @@ Rules:
 
 ```bash
 spkt retrieve "<query>" --json
-spkt inspect <id> --json            # includes sources[] and community_id
-spkt communities --json             # view community structure
+spkt neuron inspect <id> --json            # includes sources[] and community_id
+spkt community list --json             # view community structure
 ```

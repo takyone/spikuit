@@ -28,7 +28,7 @@ When generating an answer from retrieved neurons:
 
 ### Answer Format
 
-Use source URLs from `spkt inspect --json` (the `sources` array) for proper citation.
+Use source URLs from `spkt neuron inspect --json` (the `sources` array) for proper citation.
 When sources are available, cite with URL. Otherwise, cite by neuron ID.
 
 ```
@@ -72,7 +72,7 @@ For each retrieved neuron, also fetch its neighbors (ensemble) to provide
 richer context:
 
 ```bash
-spkt inspect <id> --json  # Includes neighbor IDs
+spkt neuron inspect <id> --json  # Includes neighbor IDs
 ```
 
 Use neighbor content to:
@@ -159,6 +159,6 @@ Sources:
 
 ```bash
 spkt retrieve "<query>" --brain <path> --json  # Semantic search
-spkt inspect <id> --brain <path> --json        # Neuron detail + neighbors + sources
-spkt communities --json                        # View community structure
+spkt neuron inspect <id> --brain <path> --json        # Neuron detail + neighbors + sources
+spkt community list --json                        # View community structure
 ```

@@ -9,10 +9,10 @@ For Python API details, see [API Reference](reference/index.md).
 
 ```bash
 # Simple concept
-spkt add "# Functor\n\nA mapping between categories." -t concept -d math
+spkt neuron add "# Functor\n\nA mapping between categories." -t concept -d math
 
 # With frontmatter
-spkt add "---
+spkt neuron add "---
 type: concept
 domain: french
 ---
@@ -20,30 +20,30 @@ domain: french
 Used for doubt, emotion, necessity."
 
 # From a file
-cat notes.md | spkt add -t note -d physics
+cat notes.md | spkt neuron add -t note -d physics
 ```
 
 ### Connect Concepts
 
 ```bash
 # "Monad requires Functor"
-spkt link <monad-id> <functor-id> -t requires
+spkt synapse add <monad-id> <functor-id> -t requires
 
 # "HTTP contrasts gRPC" (creates edges in both directions)
-spkt link <http-id> <grpc-id> -t contrasts
+spkt synapse add <http-id> <grpc-id> -t contrasts
 ```
 
 ### Review (Flashcard)
 
 ```bash
 # What's due?
-spkt due
+spkt neuron due
 
 # Interactive flashcard session
 spkt quiz
 
 # Manual fire (after external review)
-spkt fire <neuron-id> -g fire
+spkt neuron fire <neuron-id> -g fire
 ```
 
 ### Search & Explore
@@ -53,10 +53,10 @@ spkt fire <neuron-id> -g fire
 spkt retrieve "functor"
 
 # List by type/domain
-spkt list -t concept -d math
+spkt neuron list -t concept -d math
 
 # Inspect a neuron (review state, neighbors)
-spkt inspect <neuron-id>
+spkt neuron inspect <neuron-id>
 
 # Circuit statistics
 spkt stats
@@ -66,11 +66,11 @@ spkt stats
 
 ```bash
 # Ingest all text files with metadata
-spkt learn ./papers/ -d cs --json
+spkt source learn ./papers/ -d cs --json
 
 # With a metadata.jsonl sidecar
 echo '{"file_name": "paper1.md", "filterable": {"year": "2024"}, "searchable": {"abstract": "..."}}' > papers/metadata.jsonl
-spkt learn ./papers/ -d cs --json
+spkt source learn ./papers/ -d cs --json
 ```
 
 ### Filtered Retrieval
@@ -83,9 +83,9 @@ spkt retrieve "attention mechanism" --filter year=2017
 spkt retrieve "GNN" --filter domain=cs --filter venue=NeurIPS
 
 # Discover available filter keys
-spkt list --meta-keys --json
-spkt list --meta-values year --json
-spkt list --domains --json
+spkt neuron list --meta-keys --json
+spkt neuron list --meta-values year --json
+spkt domain list --json
 ```
 
 ### Source Management
@@ -109,10 +109,31 @@ spkt domain merge ai ml --into machine-learning
 
 ```bash
 # Re-fetch stale URL sources
-spkt refresh --stale 30
+spkt source refresh --stale 30
 
 # Re-fetch a specific source
-spkt refresh <source-id>
+spkt source refresh <source-id>
+```
+
+### Brain Health & Maintenance
+
+```bash
+# Diagnose issues (orphans, weak synapses, overdue reviews)
+spkt diagnose
+
+# Domain ↔ community alignment analysis
+spkt domain audit
+
+# Learning progress report
+spkt progress
+spkt progress --format html -o progress.html
+
+# Auto-generated user guide from brain contents
+spkt manual
+
+# Sleep-inspired consolidation (dry-run, then apply)
+spkt consolidate
+spkt consolidate apply
 ```
 
 ### Export & Import
@@ -295,6 +316,28 @@ Sources: n-jkl012 (Deep GNN analysis), n-mno345 (Spectral theory)
 - **"Thanks" / acceptance** → results were helpful → they get boosted
 - **Topic change** → session resets, starts fresh
 - **Persistent mode** → feedback survives across sessions
+
+### `/spkt-curator` — Brain Curator
+
+Conversational brain maintenance. Analyzes domain-community alignment,
+resolves orphans, cleans up weak synapses, and runs consolidation — all
+through dialogue.
+
+```
+> /spkt-curator
+
+Curator: Your "math" domain spans 2 communities:
+  c0: algebra, rings, fields (12 neurons)
+  c3: calculus, limits, derivatives (8 neurons)
+
+Split into "math-algebra" and "math-analysis"? [Y/n]
+
+> y
+
+✅ Renamed 8 neurons to "math-analysis".
+
+3 orphan neurons found. Connect "Set Theory basics" to "math-algebra"? [Y/n]
+```
 
 ## Python API
 

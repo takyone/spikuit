@@ -8,13 +8,13 @@ cd spikuit
 uv sync --package spikuit-cli
 ```
 
-## Brainの初期化
+## Brainを作る
 
-**Brain**は自己完結型のナレッジ空間です — Obsidian vaultやgitリポジトリのようなものです。
-各Brainは独自のナレッジグラフ、設定、復習スケジュールを持ちます。
-ドメインやプロジェクトごとに複数のBrainを持てます。
+**Brain**はひとまとまりのナレッジ空間です — Obsidianのvaultやgitリポジトリに近い考え方です。
+それぞれのBrainが独自のナレッジグラフ、設定、復習スケジュールを持ちます。
+分野やプロジェクトごとに分けて、いくつでも作れます。
 
-`spkt init` で対話ウィザードを起動します:
+`spkt init` で対話ウィザードが立ち上がります:
 
 ```
 $ spkt init
@@ -40,7 +40,7 @@ Create brain? [Y/n]:
 Initialized brain 'math' at /home/user/math/.spikuit/
 ```
 
-フラグを使えば非対話で初期化もできます:
+フラグを渡せば非対話で一発初期化もできます:
 
 ```bash
 spkt init -p openai-compat \
@@ -48,71 +48,71 @@ spkt init -p openai-compat \
   --model text-embedding-nomic-embed-text-v1.5
 ```
 
-以下が作成されます:
+作成されるもの:
 
 ```
 .spikuit/
 ├── config.toml    # Brain設定
 ├── circuit.db     # SQLiteデータベース
-└── cache/         # 埋め込みキャッシュ
+└── cache/         # エンベディングキャッシュ
 ```
 
-gitと同様に、`spkt`はカレントディレクトリから上に辿って`.spikuit/`を自動探索します。
-別のBrainを操作するには `--brain <パス>` を使います。
+gitと同じく、`spkt`はカレントディレクトリから親を辿って`.spikuit/`を見つけます。
+別のBrainを操作したいときは `--brain <パス>` を指定してください。
 
 ## 知識を追加する
 
 ```bash
 # コンセプトを追加
-spkt add "# Functor\n\n圏の間の写像で、構造を保存する。" \
+spkt neuron add "# Functor\n\n圏の間の写像で、構造を保存する。" \
   -t concept -d math
 
-# もう一つ追加
-spkt add "# Monad\n\n自己関手の圏におけるモノイド。" \
+# もう1つ追加
+spkt neuron add "# Monad\n\n自己関手の圏におけるモノイド。" \
   -t concept -d math
 ```
 
-## 概念を接続する
+## 概念をつなげる
 
 ```bash
-# MonadにはFunctorの理解が必要
-spkt link <monad-id> <functor-id> --type requires
+# MonadはFunctorの理解が前提
+spkt synapse add <monad-id> <functor-id> --type requires
 
-# 接続を確認
-spkt inspect <monad-id>
+# つながりを確認
+spkt neuron inspect <monad-id>
 ```
 
 ## 復習する
 
 ```bash
-# 復習期限のニューロンは？
-spkt due
+# 復習が必要なNeuronは？
+spkt neuron due
 
-# 復習する（グレード: miss/weak/fire/strong）
-spkt fire <neuron-id> --grade fire
+# 復習を記録（グレード: miss/weak/fire/strong）
+spkt neuron fire <neuron-id> --grade fire
 
-# インタラクティブクイズ
+# インタラクティブなクイズセッション
 spkt quiz
 ```
 
 ## 検索する
 
 ```bash
-# グラフ重み付き検索
+# グラフ構造を考慮した検索
 spkt retrieve "圏論"
 
-# 意味検索のために埋め込みをバックフィル
+# セマンティック検索用のエンベディングを一括生成
 spkt embed-all
 ```
 
-## ソースの取り込み
+## ソースを取り込む
 
 ```bash
-# URLを取り込む
-spkt learn "https://example.com/article" -d cs --json
+# URLから取り込み
+spkt source learn "https://example.com/article" -d cs --json
 
-# ディレクトリを一括取り込み
-spkt learn ./papers/ -d cs --json
+# ディレクトリごと一括取り込み
+spkt source learn ./papers/ -d cs --json
 ```
 
 ## 可視化
@@ -137,15 +137,16 @@ spkt export --format qabot -o qa-bundle.db
 | グレード | 意味 |
 |---------|------|
 | `miss` | 思い出せなかった |
-| `weak` | 不確か |
+| `weak` | 曖昧 |
 | `fire` | 正解 |
 | `strong` | 完璧 |
 
 ## シナプスタイプ
 
-| タイプ | 方向 | 用途 |
+| タイプ | 方向 | 意味 |
 |--------|------|------|
-| `requires` | 片方向 | Aを理解するにはBが必要 |
+| `requires` | 片方向 | AにはBの理解が必要 |
 | `extends` | 片方向 | AはBを拡張する |
 | `contrasts` | 双方向 | AとBは対比関係 |
 | `relates_to` | 双方向 | 一般的な関連 |
+| `summarizes` | 片方向 | コミュニティ要約 → メンバー |

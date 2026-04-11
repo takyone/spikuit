@@ -34,9 +34,99 @@ It works as:
 Spikuit doesn't replace these tools — it explores what becomes possible when
 you combine a knowledge graph, spaced repetition, and AI agents into one system.
 
+## Quick Start
+
+### 1. Install
+
+```bash
+pip install spikuit
+```
+
+### 2. Create a Brain
+
+A "Brain" is Spikuit's workspace — like a `.git/` directory for your knowledge.
+Run `spkt init` where you want to set one up:
+
+```bash
+mkdir my-brain && cd my-brain
+spkt init
+```
+
+The interactive wizard will ask about embedding settings. If you're just
+trying things out, choose "none" for embeddings — you can configure them later.
+
+### 3. Add some knowledge
+
+```bash
+# Add a concept
+spkt neuron add "# Ownership in Rust\n\nEach value has exactly one owner. When the owner goes out of scope, the value is dropped." \
+  -t concept -d rust
+
+# Add from a URL
+spkt source learn "https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html" -d rust
+
+# Connect related concepts
+spkt synapse add <id-1> <id-2> -t relates_to
+```
+
+### 4. Set up Agent CLI skills (recommended)
+
+Spikuit's interactive skills — tutoring, knowledge curation, and Q&A —
+run inside **Agent CLIs** like [Claude Code](https://docs.anthropic.com/en/docs/claude-code),
+Cursor, or Codex. To use them, install the skill definitions:
+
+```bash
+spkt skills install                    # defaults to .claude/skills/
+spkt skills install -t .cursor/skills  # or specify your agent
+```
+
+This copies the skill files (`SKILL.md`) and an agent context file
+(`SPIKUIT.md`) that gives the agent a complete command reference.
+
+### 5. Start using it
+
+**From your Agent CLI:**
+
+```
+You: /spkt-learn
+     I'm studying category theory. A Functor maps between categories
+     preserving structure. A Monad is a monoid in the category of endofunctors.
+
+Agent: Added 2 neurons, 1 synapse (Monad --requires--> Functor).
+
+You: /spkt-qabot
+     What's the relationship between Functors and Monads?
+
+Agent: A Monad is built on top of a Functor...
+       Sources: n-abc123 (Functor), n-def456 (Monad)
+
+You: /spkt-tutor
+
+Tutor: Let's start with Functor — it's a prerequisite for Monad.
+       [teaches, quizzes, gives feedback]
+
+You: /spkt-curator
+
+Curator: Your "math" domain spans 2 communities (algebra vs. analysis).
+         Split into sub-domains? [Y/n]
+```
+
+**Or use `spkt` commands directly:**
+
+```bash
+spkt retrieve "ownership borrow"           # search your knowledge graph
+spkt neuron due                            # what needs reviewing?
+spkt neuron fire <id> -g fire              # record a review
+spkt diagnose                              # brain health check
+spkt consolidate                           # optimize graph structure
+spkt visualize                             # interactive HTML graph
+```
+
+All commands support `--json` for machine-readable output.
+
 ## Use Cases
 
-### /spkt-learn → /spkt-qabot : Self-improving RAG
+### /spkt-learn + /spkt-qabot : Self-improving RAG
 
 Feed sources into your brain, then query it. Retrieval quality improves
 with every conversation — no re-indexing needed.
@@ -62,7 +152,7 @@ You: What about computational cost?
 Agent: [prior results auto-penalized, new neurons retrieved]
 ```
 
-### /spkt-learn → /spkt-tutor : AI study partner
+### /spkt-learn + /spkt-tutor : AI study partner
 
 Build a knowledge graph from your study material, then let an AI tutor
 teach, quiz, and coach you based on what you actually know.
@@ -89,7 +179,7 @@ Tutor: Right direction, but incomplete. A functor maps both objects
        Can you give an example of a functor between two concrete categories?
 ```
 
-## How It Works (in brief)
+## How It Works
 
 Spikuit organizes knowledge as a **graph** — concepts are nodes,
 relationships are edges. When you interact with the graph, three
@@ -105,39 +195,6 @@ things happen automatically:
 
 For the technical details behind these mechanisms, see
 [Appendix: Algorithms](docs/appendix.md).
-
-## Quick Start
-
-```bash
-# Install
-pip install spikuit
-
-# Initialize a brain (interactive wizard)
-# Configures embeddings and installs Agent CLI skills (/spkt-tutor, /spkt-learn, /spkt-qabot)
-spkt init
-```
-
-Then, from your Agent CLI (Claude Code, Cursor, Codex):
-
-```
-You: /spkt-learn
-     I want to study Rust's ownership model. Here are my notes: ...
-
-You: /spkt-qabot
-     When does Rust drop a value?
-
-You: /spkt-tutor
-     Quiz me on what I learned
-```
-
-Or use `spkt` commands directly:
-
-```bash
-spkt learn "https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html" -d cs --json
-spkt retrieve "ownership borrow"
-spkt communities --detect
-spkt visualize
-```
 
 ## Documentation
 
@@ -157,8 +214,8 @@ spikuit-agents/   # Agent skills and adapters
 ```
 
 The core engine is LLM-independent — `spkt` commands work standalone.
-Agent skills (`/spkt-tutor`, `/spkt-learn`, `/spkt-qabot`) add LLM-powered interactions
-on top, designed for tools like Claude Code.
+Agent skills (`/spkt-tutor`, `/spkt-learn`, `/spkt-qabot`, `/spkt-curator`)
+add LLM-powered interactions on top, designed for Agent CLIs like Claude Code.
 
 ## Development
 

@@ -10,7 +10,7 @@ from typing import Any
 import aiosqlite
 import sqlite_vec
 
-from .models import Grade, Neuron, QuizItem, QuizItemRole, ScaffoldLevel, Source, Spike, Synapse, SynapseType
+from .models import Grade, Neuron, QuizItem, QuizItemRole, ScaffoldLevel, Source, Spike, Synapse, SynapseConfidence, SynapseType
 
 DEFAULT_DB_PATH: Path = Path.home() / ".spikuit" / "spikuit.db"
 
@@ -159,6 +159,8 @@ class Database:
             "ALTER TABLE source ADD COLUMN http_etag TEXT",
             "ALTER TABLE source ADD COLUMN http_last_modified TEXT",
             "ALTER TABLE source ADD COLUMN status TEXT DEFAULT 'active'",
+            "ALTER TABLE synapse ADD COLUMN confidence TEXT DEFAULT 'extracted'",
+            "ALTER TABLE synapse ADD COLUMN confidence_score REAL DEFAULT 1.0",
         ]
         for sql in migrations:
             try:
@@ -288,8 +290,9 @@ class Database:
     async def insert_synapse(self, synapse: Synapse) -> None:
         await self.conn.execute(
             """INSERT OR IGNORE INTO synapse
-               (pre, post, type, weight, co_fires, last_co_fire, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+               (pre, post, type, weight, co_fires, last_co_fire,
+                confidence, confidence_score, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 synapse.pre,
                 synapse.post,
@@ -297,6 +300,8 @@ class Database:
                 synapse.weight,
                 synapse.co_fires,
                 _ts(synapse.last_co_fire) if synapse.last_co_fire else None,
+                synapse.confidence.value,
+                synapse.confidence_score,
                 _ts(synapse.created_at),
                 _ts(synapse.updated_at),
             ),
@@ -331,12 +336,15 @@ class Database:
     async def update_synapse(self, synapse: Synapse) -> None:
         synapse.updated_at = datetime.now(timezone.utc)
         await self.conn.execute(
-            """UPDATE synapse SET weight=?, co_fires=?, last_co_fire=?, updated_at=?
+            """UPDATE synapse SET weight=?, co_fires=?, last_co_fire=?,
+                    confidence=?, confidence_score=?, updated_at=?
                WHERE pre=? AND post=? AND type=?""",
             (
                 synapse.weight,
                 synapse.co_fires,
                 _ts(synapse.last_co_fire) if synapse.last_co_fire else None,
+                synapse.confidence.value,
+                synapse.confidence_score,
                 _ts(synapse.updated_at),
                 synapse.pre,
                 synapse.post,
@@ -441,6 +449,19 @@ class Database:
                 (rid, blob),
             )
         await self.conn.commit()
+
+    async def get_embedding(self, neuron_id: str) -> bytes | None:
+        """Get the embedding blob for a neuron, or None if not embedded."""
+        rows = await self.conn.execute_fetchall(
+            "SELECT rowid FROM neuron_vec_map WHERE neuron_id = ?", (neuron_id,)
+        )
+        if not rows:
+            return None
+        rid = rows[0]["rowid"]
+        vec_rows = await self.conn.execute_fetchall(
+            "SELECT embedding FROM neuron_vec WHERE rowid = ?", (rid,)
+        )
+        return vec_rows[0]["embedding"] if vec_rows else None
 
     async def delete_embedding(self, neuron_id: str) -> None:
         """Remove an embedding for a neuron."""
@@ -903,6 +924,9 @@ def _row_to_neuron(row: aiosqlite.Row) -> Neuron:
 
 
 def _row_to_synapse(row: aiosqlite.Row) -> Synapse:
+    keys = row.keys()
+    confidence_raw = row["confidence"] if "confidence" in keys else "extracted"
+    confidence_score = row["confidence_score"] if "confidence_score" in keys else 1.0
     return Synapse(
         pre=row["pre"],
         post=row["post"],
@@ -910,6 +934,8 @@ def _row_to_synapse(row: aiosqlite.Row) -> Synapse:
         weight=row["weight"],
         co_fires=row["co_fires"],
         last_co_fire=_parse_ts(row["last_co_fire"]) if row["last_co_fire"] else None,
+        confidence=SynapseConfidence(confidence_raw),
+        confidence_score=confidence_score,
         created_at=_parse_ts(row["created_at"]),
         updated_at=_parse_ts(row["updated_at"]),
     )

@@ -42,7 +42,7 @@ Each neuron can have a type (concept, term, procedure, etc.) and
 a domain (math, french, cs, etc.).
 
 ```bash
-spkt add "# Functor\n\nA mapping between categories." -t concept -d math
+spkt neuron add "# Functor\n\nA mapping between categories." -t concept -d math
 ```
 
 ### Synapses
@@ -55,6 +55,7 @@ A **Synapse** is a typed connection between two neurons.
 | `extends` | A → B | A builds on B |
 | `contrasts` | A ↔ B | A and B are alternatives or opposites |
 | `relates_to` | A ↔ B | General association |
+| `summarizes` | A → B | Community summary → member |
 
 Connections have weights that **strengthen or weaken over time**
 based on how you use them. Review two connected concepts close
@@ -66,9 +67,9 @@ A **Source** tracks where knowledge came from — a URL, paper, book,
 or file. Sources enable citation in answers and version tracking.
 
 ```bash
-spkt add "# Key Finding" --source-url "https://paper.com" --source-title "Paper"
-spkt learn "https://paper.com" -d cs --json    # bulk ingestion
-spkt learn ./papers/ -d cs --json              # directory ingestion
+spkt neuron add "# Key Finding" --source-url "https://paper.com" --source-title "Paper"
+spkt source learn "https://paper.com" -d cs --json    # bulk ingestion
+spkt source learn ./papers/ -d cs --json              # directory ingestion
 ```
 
 One source can produce many neurons (1:N). Multiple neurons can share
@@ -98,8 +99,8 @@ embedding, so the embedding captures the metadata's meaning.
 URL sources track when they were last fetched and can detect staleness:
 
 ```bash
-spkt refresh --stale 30           # Re-fetch sources older than 30 days
-spkt refresh <source-id>          # Re-fetch a specific source
+spkt source refresh --stale 30           # Re-fetch sources older than 30 days
+spkt source refresh <source-id>          # Re-fetch a specific source
 ```
 
 Freshness tracking uses conditional GET (ETag / Last-Modified) to minimize
@@ -113,12 +114,28 @@ using the Louvain algorithm. Communities improve retrieval by boosting
 results from the same cluster as your top hits.
 
 ```bash
-spkt communities --detect          # Detect communities
-spkt communities --json            # View current assignment
+spkt community detect                      # Detect communities
+spkt community detect --summarize          # Also generate summary neurons
+spkt community list --json                 # View current assignment
 ```
 
 Communities also drive the **visualization** — nodes are color-coded
 by community for easy visual identification of knowledge clusters.
+
+### Consolidation
+
+Over time, knowledge graphs accumulate weak connections and unused synapses.
+Spikuit provides **sleep-inspired consolidation** — modeled on how the brain
+reorganizes knowledge during sleep:
+
+- **SHY (Synaptic Homeostasis)**: Globally downscales weak connection weights
+- **SWS (Slow-Wave Sleep)**: Prunes connections that have decayed below threshold
+- **REM**: Detects consolidation opportunities (planned)
+
+```bash
+spkt consolidate              # Dry-run — see the plan
+spkt consolidate apply        # Apply the plan
+```
 
 ### Why a graph?
 

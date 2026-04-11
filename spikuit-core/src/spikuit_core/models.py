@@ -32,11 +32,26 @@ class SynapseType(str, Enum):
     EXTENDS = "extends"
     CONTRASTS = "contrasts"
     RELATES_TO = "relates_to"
+    SUMMARIZES = "summarizes"
 
     @property
     def is_bidirectional(self) -> bool:
         """Whether this synapse type creates edges in both directions."""
         return self in (SynapseType.CONTRASTS, SynapseType.RELATES_TO)
+
+
+class SynapseConfidence(str, Enum):
+    """Confidence level for a Synapse's provenance.
+
+    Attributes:
+        EXTRACTED: Explicitly created by user or agent.
+        INFERRED: Proposed by consolidation or auto-discovery.
+        AMBIGUOUS: Flagged for human review (e.g. near-duplicate detection).
+    """
+
+    EXTRACTED = "extracted"
+    INFERRED = "inferred"
+    AMBIGUOUS = "ambiguous"
 
 
 class Grade(int, Enum):
@@ -145,6 +160,8 @@ class Synapse(msgspec.Struct, kw_only=True):
     weight: float = 0.5
     co_fires: int = 0
     last_co_fire: datetime | None = None
+    confidence: SynapseConfidence = SynapseConfidence.EXTRACTED
+    confidence_score: float = 1.0
     created_at: datetime = msgspec.UNSET  # type: ignore[assignment]
     updated_at: datetime = msgspec.UNSET  # type: ignore[assignment]
 
