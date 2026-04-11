@@ -153,6 +153,12 @@ class Database:
         """Run schema migrations for existing databases."""
         migrations = [
             "ALTER TABLE neuron ADD COLUMN community_id INTEGER",
+            "ALTER TABLE source ADD COLUMN filterable TEXT",
+            "ALTER TABLE source ADD COLUMN searchable TEXT",
+            "ALTER TABLE source ADD COLUMN fetched_at TEXT",
+            "ALTER TABLE source ADD COLUMN http_etag TEXT",
+            "ALTER TABLE source ADD COLUMN http_last_modified TEXT",
+            "ALTER TABLE source ADD COLUMN status TEXT DEFAULT 'active'",
         ]
         for sql in migrations:
             try:
@@ -609,8 +615,10 @@ class Database:
     async def insert_source(self, source: Source) -> None:
         await self.conn.execute(
             """INSERT INTO source (id, url, title, author, section, excerpt,
-               storage_uri, content_hash, notes, accessed_at, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               storage_uri, content_hash, notes, filterable, searchable,
+               accessed_at, fetched_at, http_etag, http_last_modified, status,
+               created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 source.id,
                 source.url,
@@ -621,7 +629,13 @@ class Database:
                 source.storage_uri,
                 source.content_hash,
                 source.notes,
+                json.dumps(source.filterable) if source.filterable else None,
+                json.dumps(source.searchable) if source.searchable else None,
                 _ts(source.accessed_at) if source.accessed_at else None,
+                _ts(source.fetched_at) if source.fetched_at else None,
+                source.http_etag,
+                source.http_last_modified,
+                source.status,
                 _ts(source.created_at),
             ),
         )
@@ -663,12 +677,186 @@ class Database:
         )
         await self.conn.commit()
 
+    async def update_source(self, source: Source) -> None:
+        """Update all mutable fields of an existing Source."""
+        await self.conn.execute(
+            """UPDATE source SET url=?, title=?, author=?, section=?, excerpt=?,
+               storage_uri=?, content_hash=?, notes=?, filterable=?, searchable=?,
+               accessed_at=?, fetched_at=?, http_etag=?, http_last_modified=?, status=?
+               WHERE id=?""",
+            (
+                source.url,
+                source.title,
+                source.author,
+                source.section,
+                source.excerpt,
+                source.storage_uri,
+                source.content_hash,
+                source.notes,
+                json.dumps(source.filterable) if source.filterable else None,
+                json.dumps(source.searchable) if source.searchable else None,
+                _ts(source.accessed_at) if source.accessed_at else None,
+                _ts(source.fetched_at) if source.fetched_at else None,
+                source.http_etag,
+                source.http_last_modified,
+                source.status,
+                source.id,
+            ),
+        )
+        await self.conn.commit()
+
+    async def list_sources(self, *, limit: int = 1000) -> list[Source]:
+        """List all sources."""
+        rows = await self.conn.execute_fetchall(
+            "SELECT * FROM source ORDER BY created_at DESC LIMIT ?", (limit,)
+        )
+        return [_row_to_source(r) for r in rows]
+
     async def detach_source(self, neuron_id: str, source_id: str) -> None:
         await self.conn.execute(
             "DELETE FROM neuron_source WHERE neuron_id = ? AND source_id = ?",
             (neuron_id, source_id),
         )
         await self.conn.commit()
+
+    # -- Filtered retrieval -------------------------------------------------
+
+    async def get_filtered_neuron_ids(self, filters: dict[str, str]) -> set[str]:
+        """Return neuron IDs matching ALL filters (strict: missing key = excluded).
+
+        Neuron-level keys (type, domain) are matched on the neuron table.
+        Other keys are matched via json_extract on source.filterable.
+        """
+        neuron_filters: dict[str, str] = {}
+        source_filters: dict[str, str] = {}
+        for k, v in filters.items():
+            if k in ("type", "domain"):
+                neuron_filters[k] = v
+            else:
+                source_filters[k] = v
+
+        # Start with all neuron IDs (or those matching neuron-level filters)
+        if neuron_filters:
+            clauses = [f"{k} = ?" for k in neuron_filters]
+            sql = f"SELECT id FROM neuron WHERE {' AND '.join(clauses)}"
+            rows = await self.conn.execute_fetchall(sql, tuple(neuron_filters.values()))
+            result = {r["id"] for r in rows}
+        else:
+            rows = await self.conn.execute_fetchall("SELECT id FROM neuron")
+            result = {r["id"] for r in rows}
+
+        if not result or not source_filters:
+            return result
+
+        # For each source filter key, find neurons whose source has that key=value
+        for key, value in source_filters.items():
+            rows = await self.conn.execute_fetchall(
+                """SELECT DISTINCT ns.neuron_id FROM neuron_source ns
+                   JOIN source s ON ns.source_id = s.id
+                   WHERE s.filterable IS NOT NULL
+                     AND json_extract(s.filterable, ?) = ?""",
+                (f"$.{key}", value),
+            )
+            matching = {r["neuron_id"] for r in rows}
+            result &= matching  # strict intersection
+            if not result:
+                break
+
+        return result
+
+    # -- Metadata discovery -------------------------------------------------
+
+    async def get_meta_keys(self) -> list[dict]:
+        """Get distinct filterable + searchable keys with counts and samples.
+
+        Returns list of dicts: {key, layer, count, sample_values}.
+        """
+        results: list[dict] = []
+        for layer, col in [("filterable", "filterable"), ("searchable", "searchable")]:
+            rows = await self.conn.execute_fetchall(
+                f"""SELECT key, COUNT(*) as cnt,
+                       GROUP_CONCAT(DISTINCT value) as samples
+                    FROM source, json_each(source.{col})
+                    WHERE source.{col} IS NOT NULL
+                    GROUP BY key
+                    ORDER BY cnt DESC"""
+            )
+            for r in rows:
+                samples = r["samples"] or ""
+                sample_list = samples.split(",")[:5]  # max 5 samples
+                results.append({
+                    "key": r["key"],
+                    "layer": layer,
+                    "count": r["cnt"],
+                    "sample_values": sample_list,
+                })
+        return results
+
+    async def get_meta_values(self, key: str) -> list[dict]:
+        """Get distinct values for a filterable or searchable key with counts.
+
+        Searches both filterable and searchable columns.
+        Returns list of dicts: {value, layer, count}.
+        """
+        results: list[dict] = []
+        for layer, col in [("filterable", "filterable"), ("searchable", "searchable")]:
+            rows = await self.conn.execute_fetchall(
+                f"""SELECT value, COUNT(*) as cnt
+                    FROM source, json_each(source.{col})
+                    WHERE source.{col} IS NOT NULL AND key = ?
+                    GROUP BY value
+                    ORDER BY cnt DESC""",
+                (key,),
+            )
+            for r in rows:
+                results.append({
+                    "value": r["value"],
+                    "layer": layer,
+                    "count": r["cnt"],
+                })
+        return results
+
+    async def get_domain_counts(self) -> list[dict]:
+        """Get domain names with neuron counts."""
+        rows = await self.conn.execute_fetchall(
+            """SELECT domain, COUNT(*) as count FROM neuron
+               WHERE domain IS NOT NULL AND domain != ''
+               GROUP BY domain ORDER BY count DESC"""
+        )
+        return [{"domain": r["domain"], "count": r["count"]} for r in rows]
+
+    async def get_stale_sources(self, stale_days: int) -> list[Source]:
+        """Get URL sources older than stale_days since last fetch."""
+        rows = await self.conn.execute_fetchall(
+            """SELECT * FROM source
+               WHERE url IS NOT NULL AND url LIKE 'http%'
+               AND (fetched_at IS NULL
+                    OR julianday('now') - julianday(fetched_at) > ?)
+               ORDER BY fetched_at ASC""",
+            (stale_days,),
+        )
+        return [_row_to_source(r) for r in rows]
+
+    async def rename_domain(self, old: str, new: str) -> int:
+        """Rename all neurons with domain=old to domain=new. Returns count."""
+        cursor = await self.conn.execute(
+            "UPDATE neuron SET domain = ? WHERE domain = ?", (new, old)
+        )
+        await self.conn.commit()
+        return cursor.rowcount
+
+    async def merge_domains(self, sources: list[str], target: str) -> int:
+        """Merge multiple domains into target. Returns total count."""
+        total = 0
+        for src in sources:
+            if src == target:
+                continue
+            cursor = await self.conn.execute(
+                "UPDATE neuron SET domain = ? WHERE domain = ?", (target, src)
+            )
+            total += cursor.rowcount
+        await self.conn.commit()
+        return total
 
     # -- Community ----------------------------------------------------------
 
@@ -728,6 +916,9 @@ def _row_to_synapse(row: aiosqlite.Row) -> Synapse:
 
 
 def _row_to_source(row: aiosqlite.Row) -> Source:
+    keys = row.keys()
+    filterable_raw = row["filterable"] if "filterable" in keys else None
+    searchable_raw = row["searchable"] if "searchable" in keys else None
     return Source(
         id=row["id"],
         url=row["url"],
@@ -738,7 +929,13 @@ def _row_to_source(row: aiosqlite.Row) -> Source:
         storage_uri=row["storage_uri"],
         content_hash=row["content_hash"],
         notes=row["notes"],
+        filterable=json.loads(filterable_raw) if filterable_raw else None,
+        searchable=json.loads(searchable_raw) if searchable_raw else None,
         accessed_at=_parse_ts(row["accessed_at"]) if row["accessed_at"] else None,
+        fetched_at=_parse_ts(row["fetched_at"]) if "fetched_at" in keys and row["fetched_at"] else None,
+        http_etag=row["http_etag"] if "http_etag" in keys else None,
+        http_last_modified=row["http_last_modified"] if "http_last_modified" in keys else None,
+        status=row["status"] if "status" in keys and row["status"] else "active",
         created_at=_parse_ts(row["created_at"]),
     )
 

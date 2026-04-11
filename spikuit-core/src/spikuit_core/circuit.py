@@ -27,6 +27,10 @@ _GRADE_TO_RATING: dict[Grade, Rating] = {
 }
 
 
+class ReadOnlyError(Exception):
+    """Raised when a mutating operation is attempted on a read-only Circuit."""
+
+
 class Circuit:
     """The knowledge graph engine — FSRS scheduling + NetworkX graph + propagation.
 
@@ -59,8 +63,10 @@ class Circuit:
         db_path: str | Path = DEFAULT_DB_PATH,
         plasticity: Plasticity | None = None,
         embedder: Embedder | None = None,
+        read_only: bool = False,
     ) -> None:
         self._embedder = embedder
+        self._read_only = read_only
         self._db: Database = Database(
             db_path,
             embedding_dimension=embedder.dimension if embedder else None,
@@ -69,6 +75,11 @@ class Circuit:
         self._scheduler: Scheduler = Scheduler()
         self._cards: dict[str, Card] = {}  # neuron_id → FSRS Card (in-memory cache)
         self.plasticity: Plasticity = plasticity or Plasticity()
+
+    def _guard_readonly(self) -> None:
+        """Raise ReadOnlyError if Circuit is in read-only mode."""
+        if self._read_only:
+            raise ReadOnlyError("Circuit is in read-only mode")
 
     # -- Lifecycle ----------------------------------------------------------
 
@@ -119,14 +130,24 @@ class Circuit:
 
     # -- Embedding helpers --------------------------------------------------
 
-    def _prepare_embed_text(self, neuron: Neuron) -> str:
+    def _prepare_embed_text(
+        self,
+        neuron: Neuron,
+        searchable: dict[str, str] | None = None,
+        max_searchable_chars: int = 500,
+    ) -> str:
         """Build the text to embed for a neuron.
 
         Strips YAML frontmatter and prepends contextual prefixes that
         improve retrieval quality:
 
         - ``[Section: X]`` from frontmatter ``section`` field
-        - (future) searchable source metadata
+        - ``[key: value]`` pairs from source searchable metadata
+
+        Args:
+            neuron: The neuron whose content to prepare.
+            searchable: Source searchable metadata dict (optional).
+            max_searchable_chars: Max total chars for searchable prefix.
         """
         from .models import _parse_frontmatter, strip_frontmatter
 
@@ -136,6 +157,15 @@ class Circuit:
         prefix_parts: list[str] = []
         if fm.get("section"):
             prefix_parts.append(f"[Section: {fm['section']}]")
+
+        if searchable:
+            total = 0
+            for key, value in searchable.items():
+                part = f"[{key}: {value}]"
+                if total + len(part) > max_searchable_chars:
+                    break
+                prefix_parts.append(part)
+                total += len(part)
 
         if prefix_parts:
             return " ".join(prefix_parts) + " " + body
@@ -155,6 +185,7 @@ class Circuit:
         Returns:
             The same neuron (pass-through for chaining).
         """
+        self._guard_readonly()
         await self._db.insert_neuron(neuron)
         self._graph.add_node(neuron.id, type=neuron.type, domain=neuron.domain)
 
@@ -180,6 +211,7 @@ class Circuit:
         return await self._db.list_neurons(**kwargs)  # type: ignore[arg-type]
 
     async def update_neuron(self, neuron: Neuron) -> None:
+        self._guard_readonly()
         await self._db.update_neuron(neuron)
         if neuron.id in self._graph:
             self._graph.nodes[neuron.id]["type"] = neuron.type
@@ -193,6 +225,7 @@ class Circuit:
             await self._db.upsert_embedding(neuron.id, vec_to_blob(vec))
 
     async def remove_neuron(self, neuron_id: str) -> None:
+        self._guard_readonly()
         await self._db.delete_neuron(neuron_id)
         if neuron_id in self._graph:
             self._graph.remove_node(neuron_id)
@@ -269,6 +302,7 @@ class Circuit:
         Raises:
             ValueError: If either neuron does not exist in the circuit.
         """
+        self._guard_readonly()
         if pre not in self._graph or post not in self._graph:
             raise ValueError(
                 f"Both neurons must exist in the circuit. "
@@ -303,6 +337,7 @@ class Circuit:
     async def remove_synapse(
         self, pre: str, post: str, type: SynapseType
     ) -> None:
+        self._guard_readonly()
         await self._db.delete_synapse(pre, post, type)
         if self._graph.has_edge(pre, post):
             self._graph.remove_edge(pre, post)
@@ -332,6 +367,7 @@ class Circuit:
         Returns:
             The updated FSRS Card with new scheduling state.
         """
+        self._guard_readonly()
         # 1. Record spike
         await self._db.insert_spike(spike)
 
@@ -469,6 +505,7 @@ class Circuit:
         query: str,
         *,
         limit: int = 10,
+        filters: dict[str, str] | None = None,
     ) -> list[Neuron]:
         """Retrieve neurons matching a query with graph-weighted scoring.
 
@@ -484,6 +521,9 @@ class Circuit:
         Args:
             query: Search query text.
             limit: Maximum number of results.
+            filters: Key-value filters. ``type`` and ``domain`` filter on the
+                neuron table; other keys filter on source filterable metadata.
+                Strict semantics: neurons without the key are excluded.
 
         Returns:
             List of matching neurons, sorted by score descending.
@@ -495,6 +535,11 @@ class Circuit:
         keywords = query_lower.split()
         if not keywords:
             return []
+
+        # Pre-filter neuron IDs if filters provided
+        allowed_ids: set[str] | None = None
+        if filters:
+            allowed_ids = await self._db.get_filtered_neuron_ids(filters)
 
         # Compute degree centrality (no scipy needed, unlike PageRank)
         centrality_map: dict[str, float] = {}
@@ -523,6 +568,8 @@ class Circuit:
         seen: set[str] = set()
 
         for n in all_neurons:
+            if allowed_ids is not None and n.id not in allowed_ids:
+                continue
             content_lower = n.content.lower()
             hits = sum(1 for kw in keywords if kw in content_lower)
             keyword_sim = hits / len(keywords) if hits > 0 else 0.0
@@ -552,6 +599,8 @@ class Circuit:
         # Include semantic-only hits not caught by keyword scan
         for nid, sem_sim in semantic_scores.items():
             if nid in seen or sem_sim == 0.0:
+                continue
+            if allowed_ids is not None and nid not in allowed_ids:
                 continue
             n = neuron_map.get(nid)
             if n is None:
@@ -659,12 +708,23 @@ class Circuit:
                 to_embed.append(n)
         if not to_embed:
             return 0
+
+        # Preload searchable metadata for neurons with sources
+        searchable_map: dict[str, dict[str, str]] = {}
+        for n in to_embed:
+            sources = await self._db.get_sources_for_neuron(n.id)
+            for src in sources:
+                if src.searchable:
+                    searchable_map[n.id] = src.searchable
+                    break  # use first source with searchable
+
         count = 0
         for i in range(0, len(to_embed), batch_size):
             batch = to_embed[i : i + batch_size]
             texts = [
                 self._embedder.apply_prefix(
-                    self._prepare_embed_text(n), EmbeddingType.DOCUMENT,
+                    self._prepare_embed_text(n, searchable=searchable_map.get(n.id)),
+                    EmbeddingType.DOCUMENT,
                 )
                 for n in batch
             ]
@@ -704,6 +764,55 @@ class Circuit:
     async def detach_source(self, neuron_id: str, source_id: str) -> None:
         """Remove the link between a neuron and a source."""
         await self._db.detach_source(neuron_id, source_id)
+
+    async def list_sources(self, *, limit: int = 100) -> list[Source]:
+        """List sources."""
+        return await self._db.list_sources(limit=limit)
+
+    async def get_source(self, source_id: str) -> Source | None:
+        """Get a source by ID."""
+        return await self._db.get_source(source_id)
+
+    async def update_source(self, source: Source) -> None:
+        """Update source fields (pass the modified Source object)."""
+        await self._db.update_source(source)
+
+    async def get_neurons_for_source(self, source_id: str) -> list[str]:
+        """Get neuron IDs attached to a source."""
+        return await self._db.get_neurons_for_source(source_id)
+
+    async def get_meta_keys(self) -> list[dict]:
+        """Get distinct filterable/searchable keys with counts."""
+        return await self._db.get_meta_keys()
+
+    async def get_meta_values(self, key: str) -> list[dict]:
+        """Get distinct values for a metadata key."""
+        return await self._db.get_meta_values(key)
+
+    async def get_domain_counts(self) -> list[dict]:
+        """Get domain names with neuron counts."""
+        return await self._db.get_domain_counts()
+
+    async def get_stale_sources(self, stale_days: int) -> list:
+        """Get URL sources older than stale_days since last fetch."""
+        return await self._db.get_stale_sources(stale_days)
+
+    async def rename_domain(self, old: str, new: str) -> int:
+        """Rename all neurons with domain=old to domain=new."""
+        count = await self._db.rename_domain(old, new)
+        # Update in-memory graph
+        for nid in self._graph.nodes:
+            if self._graph.nodes[nid].get("domain") == old:
+                self._graph.nodes[nid]["domain"] = new
+        return count
+
+    async def merge_domains(self, sources: list[str], target: str) -> int:
+        """Merge multiple domains into target."""
+        count = await self._db.merge_domains(sources, target)
+        for nid in self._graph.nodes:
+            if self._graph.nodes[nid].get("domain") in sources:
+                self._graph.nodes[nid]["domain"] = target
+        return count
 
     # -- Community detection ------------------------------------------------
 

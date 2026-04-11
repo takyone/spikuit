@@ -10,6 +10,7 @@ import pytest
 import pytest_asyncio
 
 from spikuit_core import Circuit, Grade, Neuron, Plasticity, Source, Spike, SynapseType
+from spikuit_core.db import Database
 
 
 @pytest_asyncio.fixture
@@ -207,3 +208,105 @@ async def test_community_boost_ranks_same_community_higher(circuit: Circuit):
     a_indices = [ids.index(n.id) for n in [a1, a2, a3] if n.id in ids]
     b_index = ids.index(b1.id) if b1.id in ids else len(ids)
     assert all(ai < b_index for ai in a_indices)
+
+
+# -------------------------------------------------------------------
+# Filtered retrieval
+# -------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_filter_by_domain(circuit: Circuit):
+    """Filtering by domain should exclude non-matching neurons."""
+    n1 = Neuron.create("# Functor\n\nA mapping.", type="concept", domain="math")
+    n2 = Neuron.create("# Functor pattern\n\nDesign pattern.", type="concept", domain="cs")
+    await circuit.add_neuron(n1)
+    await circuit.add_neuron(n2)
+
+    results = await circuit.retrieve("functor", filters={"domain": "math"})
+    ids = [r.id for r in results]
+    assert n1.id in ids
+    assert n2.id not in ids
+
+
+@pytest.mark.asyncio
+async def test_filter_by_type(circuit: Circuit):
+    """Filtering by type should exclude non-matching neurons."""
+    n1 = Neuron.create("# Monad\n\nA monoid.", type="concept", domain="math")
+    n2 = Neuron.create("# Monad tutorial\n\nStep by step.", type="procedure", domain="math")
+    await circuit.add_neuron(n1)
+    await circuit.add_neuron(n2)
+
+    results = await circuit.retrieve("monad", filters={"type": "concept"})
+    ids = [r.id for r in results]
+    assert n1.id in ids
+    assert n2.id not in ids
+
+
+@pytest.mark.asyncio
+async def test_filter_by_source_filterable(circuit: Circuit):
+    """Filtering by source filterable metadata (strict: missing key = excluded)."""
+    n1 = Neuron.create("# APPNP\n\nGraph PageRank for GNNs.", type="concept", domain="cs")
+    n2 = Neuron.create("# GCN\n\nGraph convolution.", type="concept", domain="cs")
+    await circuit.add_neuron(n1)
+    await circuit.add_neuron(n2)
+
+    src = Source(
+        url="https://arxiv.org/abs/1810.05997",
+        title="APPNP Paper",
+        filterable={"year": "2018", "venue": "ICLR"},
+    )
+    await circuit.add_source(src)
+    await circuit.attach_source(n1.id, src.id)
+    # n2 has no source → missing key → should be excluded
+
+    results = await circuit.retrieve("graph", filters={"year": "2018"})
+    ids = [r.id for r in results]
+    assert n1.id in ids
+    assert n2.id not in ids
+
+
+@pytest.mark.asyncio
+async def test_filter_wrong_value_excludes(circuit: Circuit):
+    """Filter value mismatch should exclude the neuron."""
+    n1 = Neuron.create("# APPNP\n\nPageRank.", type="concept", domain="cs")
+    await circuit.add_neuron(n1)
+
+    src = Source(url="https://a.com", filterable={"year": "2018"})
+    await circuit.add_source(src)
+    await circuit.attach_source(n1.id, src.id)
+
+    results = await circuit.retrieve("appnp", filters={"year": "2020"})
+    assert len(results) == 0
+
+
+@pytest.mark.asyncio
+async def test_filter_combined_neuron_and_source(circuit: Circuit):
+    """Combine neuron-level (domain) and source-level (filterable) filters."""
+    n1 = Neuron.create("# Paper A\n\nGNN stuff.", type="concept", domain="cs")
+    n2 = Neuron.create("# Paper B\n\nGNN stuff.", type="concept", domain="math")
+    await circuit.add_neuron(n1)
+    await circuit.add_neuron(n2)
+
+    src = Source(url="https://a.com", filterable={"year": "2020"})
+    await circuit.add_source(src)
+    await circuit.attach_source(n1.id, src.id)
+    await circuit.attach_source(n2.id, src.id)
+
+    # Both have year=2020, but only n1 has domain=cs
+    results = await circuit.retrieve("gnn", filters={"domain": "cs", "year": "2020"})
+    ids = [r.id for r in results]
+    assert n1.id in ids
+    assert n2.id not in ids
+
+
+@pytest.mark.asyncio
+async def test_no_filters_returns_all(circuit: Circuit):
+    """No filters should behave as before (return all matches)."""
+    n1 = Neuron.create("# Topic A\n\nAbout topic.", domain="math")
+    n2 = Neuron.create("# Topic B\n\nAbout topic.", domain="cs")
+    await circuit.add_neuron(n1)
+    await circuit.add_neuron(n2)
+
+    results = await circuit.retrieve("topic")
+    assert len(results) == 2

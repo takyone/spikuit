@@ -568,3 +568,72 @@ async def test_no_frontmatter_no_prefix(tmp_path):
 
     assert len(captured_texts) == 1
     assert captured_texts[0] == "# Plain\n\nNo frontmatter here."
+
+
+# ---------------------------------------------------------------------------
+# Searchable source metadata in embedding
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_searchable_metadata_in_embedding(tmp_path):
+    """Source searchable metadata should be prepended to embedding text via embed_all."""
+    from spikuit_core import Source
+
+    captured_texts: list[str] = []
+
+    class CapturingEmbedder(Embedder):
+        @property
+        def dimension(self) -> int:
+            return 4
+
+        async def embed(self, text: str) -> list[float]:
+            captured_texts.append(text)
+            return [0.0] * 4
+
+    # Create circuit without embedder, add neuron + source with searchable
+    c1 = Circuit(db_path=tmp_path / "test.db")
+    await c1.connect()
+    n = Neuron.create("# APPNP\n\nPersonalized PageRank for GNNs.", id="n1")
+    await c1.add_neuron(n)
+    src = Source(
+        url="https://arxiv.org/abs/1810.05997",
+        title="APPNP Paper",
+        searchable={"abstract": "We propose APPNP", "keywords": "GNN, PageRank"},
+    )
+    await c1.add_source(src)
+    await c1.attach_source(n.id, src.id)
+    await c1.close()
+
+    # Reopen with capturing embedder and backfill
+    emb = CapturingEmbedder()
+    c2 = Circuit(db_path=tmp_path / "test.db", embedder=emb)
+    await c2.connect()
+    count = await c2.embed_all()
+    await c2.close()
+
+    assert count == 1
+    assert "[abstract: We propose APPNP]" in captured_texts[0]
+    assert "[keywords: GNN, PageRank]" in captured_texts[0]
+    assert "APPNP" in captured_texts[0]
+
+
+@pytest.mark.asyncio
+async def test_searchable_truncated_at_max_chars(tmp_path):
+    """Searchable metadata should be truncated at max_searchable_chars."""
+    c = Circuit(db_path=tmp_path / "test.db")
+    await c.connect()
+
+    n = Neuron.create("# Test\n\nBody.", id="n1")
+    long_value = "x" * 1000
+    text = c._prepare_embed_text(
+        n,
+        searchable={"long_key": long_value},
+        max_searchable_chars=50,
+    )
+    await c.close()
+
+    # Should not contain the full 1000-char value
+    assert len(text) < 1100  # body + truncated searchable
+    # The long_key part should be truncated (not included since > 50 chars)
+    assert "[long_key:" not in text

@@ -245,6 +245,122 @@ async def test_source_storage_uri_persists(db):
     assert got.storage_uri == "file:///tmp/.spikuit/sources/s-abc123.html"
 
 
+@pytest.mark.asyncio
+async def test_source_filterable_roundtrip(db):
+    """filterable dict should serialize to JSON and roundtrip through DB."""
+    s = Source(
+        url="https://example.com/paper",
+        title="Paper",
+        filterable={"year": "2017", "venue": "NeurIPS", "type": "survey"},
+    )
+    await db.insert_source(s)
+
+    got = await db.get_source(s.id)
+    assert got is not None
+    assert got.filterable == {"year": "2017", "venue": "NeurIPS", "type": "survey"}
+
+
+@pytest.mark.asyncio
+async def test_source_searchable_roundtrip(db):
+    """searchable dict should serialize to JSON and roundtrip through DB."""
+    s = Source(
+        url="https://example.com/article",
+        title="Article",
+        searchable={"abstract": "We propose a novel approach...", "keywords": "GNN, attention"},
+    )
+    await db.insert_source(s)
+
+    got = await db.get_source(s.id)
+    assert got is not None
+    assert got.searchable == {"abstract": "We propose a novel approach...", "keywords": "GNN, attention"}
+
+
+@pytest.mark.asyncio
+async def test_source_null_filterable_searchable(db):
+    """None filterable/searchable should persist as NULL."""
+    s = Source(url="https://example.com/plain", title="Plain")
+    await db.insert_source(s)
+
+    got = await db.get_source(s.id)
+    assert got is not None
+    assert got.filterable is None
+    assert got.searchable is None
+
+
+@pytest.mark.asyncio
+async def test_update_source(db):
+    """update_source should update mutable fields."""
+    s = Source(url="https://old.com", title="Old Title")
+    await db.insert_source(s)
+
+    s.url = "https://new.com"
+    s.title = "New Title"
+    s.filterable = {"corrected": "true"}
+    await db.update_source(s)
+
+    got = await db.get_source(s.id)
+    assert got is not None
+    assert got.url == "https://new.com"
+    assert got.title == "New Title"
+    assert got.filterable == {"corrected": "true"}
+
+
+@pytest.mark.asyncio
+async def test_list_sources(db):
+    """list_sources should return all sources."""
+    s1 = Source(url="https://a.com", title="A")
+    s2 = Source(url="https://b.com", title="B")
+    await db.insert_source(s1)
+    await db.insert_source(s2)
+
+    sources = await db.list_sources()
+    assert len(sources) == 2
+
+
+@pytest.mark.asyncio
+async def test_get_meta_keys(db):
+    """get_meta_keys should return distinct keys across sources."""
+    s1 = Source(
+        url="https://a.com",
+        filterable={"year": "2017", "venue": "ICML"},
+        searchable={"abstract": "..."},
+    )
+    s2 = Source(
+        url="https://b.com",
+        filterable={"year": "2020", "author": "Alice"},
+    )
+    await db.insert_source(s1)
+    await db.insert_source(s2)
+
+    keys = await db.get_meta_keys()
+    key_names = {k["key"] for k in keys}
+    assert "year" in key_names
+    assert "venue" in key_names
+    assert "author" in key_names
+    assert "abstract" in key_names
+
+    # year should have count=2
+    year_entry = next(k for k in keys if k["key"] == "year")
+    assert year_entry["count"] == 2
+    assert year_entry["layer"] == "filterable"
+
+
+@pytest.mark.asyncio
+async def test_get_domain_counts(db):
+    """get_domain_counts should return domain names with counts."""
+    n1 = Neuron.create("# A", type="concept", domain="math")
+    n2 = Neuron.create("# B", type="concept", domain="math")
+    n3 = Neuron.create("# C", type="concept", domain="cs")
+    await db.insert_neuron(n1)
+    await db.insert_neuron(n2)
+    await db.insert_neuron(n3)
+
+    domains = await db.get_domain_counts()
+    domain_map = {d["domain"]: d["count"] for d in domains}
+    assert domain_map["math"] == 2
+    assert domain_map["cs"] == 1
+
+
 def test_content_hash_should_be_of_extracted_text():
     """Verify that the hash of extracted text differs from hash of raw HTML."""
     import hashlib

@@ -447,7 +447,15 @@ class Source(msgspec.Struct, kw_only=True):
         storage_uri: Where raw content is stored (``file://``, ``s3://``, etc.).
         content_hash: SHA256 of the raw content (for version detection).
         notes: User's ingestion intent or instructions.
+        filterable: Arbitrary key-value metadata for SQL filtering (strict match).
+            Keys with no match exclude the source from filter results.
+        searchable: Key-value metadata prepended to embedding input
+            for soft relevance boosting (truncated to ``max_searchable_chars``).
         accessed_at: When the source was fetched.
+        fetched_at: When the source content was last fetched/refreshed.
+        http_etag: HTTP ETag header from last fetch (for conditional requests).
+        http_last_modified: HTTP Last-Modified header from last fetch.
+        status: Source status — ``"active"`` or ``"unreachable"``.
         created_at: UTC timestamp, auto-set on creation.
     """
 
@@ -460,7 +468,13 @@ class Source(msgspec.Struct, kw_only=True):
     storage_uri: str | None = None
     content_hash: str | None = None
     notes: str | None = None
+    filterable: dict[str, Any] | None = None
+    searchable: dict[str, str] | None = None
     accessed_at: datetime | None = None
+    fetched_at: datetime | None = None
+    http_etag: str | None = None
+    http_last_modified: str | None = None
+    status: str = "active"
     created_at: datetime = msgspec.UNSET  # type: ignore[assignment]
 
     def __post_init__(self) -> None:

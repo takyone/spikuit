@@ -2,7 +2,7 @@
 
 __version__ = "0.3.0"
 
-from .circuit import Circuit
+from .circuit import Circuit, ReadOnlyError
 from .config import BrainConfig, find_spikuit_root, init_brain, load_config
 from .embedder import Embedder, EmbeddingType, NullEmbedder, OllamaEmbedder, OpenAICompatEmbedder, create_embedder
 from .models import (
@@ -31,6 +31,7 @@ from .tutor import TutorSession, TutorState
 __all__ = [
     "AutoQuiz",
     "Circuit",
+    "ReadOnlyError",
     "ExamResult",
     "Grade",
     "Neuron",

@@ -68,6 +68,7 @@ class EmbedderConfig:
     api_key: str = "not-needed"
     timeout: float = 30.0
     prefix_style: str = "none"
+    max_searchable_chars: int = 500
 
 
 @dataclass
@@ -224,6 +225,7 @@ def _apply_config(config: BrainConfig, data: dict[str, Any]) -> None:
             api_key=emb.get("api_key", "not-needed"),
             timeout=emb.get("timeout", 30.0),
             prefix_style=emb.get("prefix_style", "none"),
+            max_searchable_chars=emb.get("max_searchable_chars", 500),
         )
 
 
