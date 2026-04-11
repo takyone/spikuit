@@ -68,10 +68,43 @@ or file. Sources enable citation in answers and version tracking.
 ```bash
 spkt add "# Key Finding" --source-url "https://paper.com" --source-title "Paper"
 spkt learn "https://paper.com" -d cs --json    # bulk ingestion
+spkt learn ./papers/ -d cs --json              # directory ingestion
 ```
 
 One source can produce many neurons (1:N). Multiple neurons can share
 the same source (M:N). Sources are deduplicated by URL.
+
+#### Metadata Layers
+
+Sources carry two kinds of metadata:
+
+| Layer | Purpose | How it's used |
+|-------|---------|---------------|
+| **filterable** | Structured key-value pairs for strict filtering | SQL WHERE — missing key excludes the result |
+| **searchable** | Free-text metadata for soft relevance | Prepended to embedding input — improves semantic match |
+
+```jsonl
+{"file_name": "paper.md", "filterable": {"year": "2024", "venue": "NeurIPS"}, "searchable": {"abstract": "We propose..."}}
+```
+
+Filterable metadata is strict: `--filter year=2024` only returns sources that
+have a `year` key with value `2024`. Sources without the key are excluded entirely.
+
+Searchable metadata is soft: it's prepended to the neuron's content before
+embedding, so the embedding captures the metadata's meaning.
+
+#### Source Freshness
+
+URL sources track when they were last fetched and can detect staleness:
+
+```bash
+spkt refresh --stale 30           # Re-fetch sources older than 30 days
+spkt refresh <source-id>          # Re-fetch a specific source
+```
+
+Freshness tracking uses conditional GET (ETag / Last-Modified) to minimize
+bandwidth. If content has changed, affected neurons are re-embedded automatically.
+Sources returning 404 are flagged as `unreachable`.
 
 ### Communities
 
@@ -165,12 +198,45 @@ Sessions are LLM-powered interaction modes for your Brain:
 Sessions can be **persistent** (feedback saved for future use) or
 **ephemeral** (discarded after the session).
 
+## Export & Deployment
+
+### QABot Bundle
+
+A **QABot bundle** is a portable, read-only SQLite file that contains
+everything needed for retrieval: neurons, synapses, embeddings, and
+source citations.
+
+```bash
+spkt export --format qabot -o qa-bundle.db
+```
+
+It excludes FSRS scheduling state, review history, and raw source files —
+just the knowledge and the vectors needed to search it.
+
+Load a bundle with `Circuit(read_only=True)`:
+
+```python
+circuit = Circuit(db_path="qa-bundle.db", read_only=True)
+results = await circuit.retrieve("query")  # works
+await circuit.add_neuron(...)              # raises ReadOnlyError
+```
+
+Use cases: deploy a QABot to a server, share a brain without review data,
+or build a static RAG endpoint.
+
+### Other Formats
+
+| Format | Command | Use case |
+|--------|---------|----------|
+| Tarball | `spkt export -o backup.tar.gz` | Full backup |
+| JSON | `spkt export --format json -o brain.json` | Sharing, inspection |
+
 ## Architecture
 
 ```
 spikuit-core/     # Pure engine (no LLM dependency)
 ├── Circuit       #   Knowledge graph + FSRS + propagation
-├── Embedder      #   Pluggable text embedding
+├── Embedder      #   Pluggable text embedding (task-type prefixes)
 ├── Sessions      #   QABot, Learn, Tutor
 └── Learn         #   Quiz strategies (Flashcard, AutoQuiz)
 
@@ -181,5 +247,5 @@ spikuit-agents/   # Agent skills and adapters
 The core engine is **LLM-independent** — all `spkt` commands work without
 an LLM. Sessions and agent skills add LLM-powered interactions on top.
 
-For algorithm details (FSRS, graph propagation, scoring formulas), see
-[Appendix: Algorithms](appendix.md).
+For algorithm details (FSRS, graph propagation, scoring formulas, embedding
+pipeline), see [Appendix: Algorithms](appendix.md).

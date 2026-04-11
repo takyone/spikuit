@@ -194,6 +194,56 @@ circuit.fire(spike)
 | `weight_floor` | 0.05 | Minimum edge weight |
 | `weight_ceiling` | 1.0 | Maximum edge weight |
 
+## Embedding Pipeline
+
+### Input Preparation
+
+Before embedding, neuron content goes through a preparation pipeline:
+
+```
+Raw neuron content
+  → strip YAML frontmatter
+  → prepend [Section: ...] from frontmatter (if present)
+  → prepend [key: value] from source searchable metadata (truncated to max_searchable_chars)
+  → final embedding input
+```
+
+This ensures embeddings capture semantic context beyond the raw text,
+while excluding structural noise (frontmatter keys, formatting).
+
+### Task-Type Prefixes
+
+Many embedding models perform better when the input is tagged with its
+purpose (document vs. query). Spikuit supports this via `prefix_style`
+in `config.toml`:
+
+```toml
+[embedder]
+prefix_style = "nomic"    # "nomic", "google", "cohere", "none"
+```
+
+| Style | Document prefix | Query prefix |
+|-------|----------------|--------------|
+| `nomic` | `search_document: ` | `search_query: ` |
+| `google` | `RETRIEVAL_DOCUMENT: ` | `RETRIEVAL_QUERY: ` |
+| `cohere` | `search_document: ` | `search_query: ` |
+| `none` (default) | — | — |
+
+The prefix is applied automatically:
+- `EmbeddingType.DOCUMENT` when adding/updating neurons and running `embed-all`
+- `EmbeddingType.QUERY` when calling `retrieve()`
+
+### Searchable Metadata Formula
+
+When a neuron has source searchable metadata, the embedding input becomes:
+
+```
+[key1: value1] [key2: value2] [Section: section_name] body_text
+```
+
+Total searchable content is truncated to `max_searchable_chars` (default: 500)
+to prevent metadata from dominating the embedding.
+
 ## Embedder Providers
 
 | Provider | API | Use case |

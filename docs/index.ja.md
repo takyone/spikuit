@@ -1,18 +1,23 @@
 # Spikuit
 
-**使うほど賢くなるナレッジベース**
+**会話で育てるナレッジグラフ**
 
 ---
 
-Spikuit（spike + circuit、発音: /spaɪ.kɪt/）は、**検索、復習、質問のすべてがシステムを改善する**パーソナルナレッジシステムです。
+Spikuit（spike + circuit、発音: /spaɪ.kɪt/）は、ナレッジ管理の最も難しい部分
+— 取り込み、構造化、メンテナンス — をAIエージェントとの対話で自動化する
+パーソナルナレッジシステムです。
 
-## 何ができますか？
+従来のRAGシステムはデータ整備で破綻します。チャンキング、タグ付け、
+関連付け、鮮度管理。Spikuitはこれを **Conversational Curation**
+（対話型キュレーション）で解決します — 会話するだけでナレッジベースが育ちます。
 
-### /spkt-learn → /spkt-qabot : 自己成長するRAG
+## 3つのスキル、1つのループ
 
-記事、メモ、URLをBrainに取り込んで、自然言語で質問できます。
-回答にはソースの引用が含まれます。検索品質は会話ごとに改善されます —
-役に立たない結果は自動的にペナルティされ、役立つ結果はブーストされます。
+### `/spkt-learn` — 話して取り込む
+
+記事、メモ、URLをBrainに取り込みます。エージェントがコンテンツを分割し、
+関連を発見し、ナレッジグラフを構築します — あなたは話すだけ。
 
 ```
 You: /spkt-learn
@@ -20,7 +25,15 @@ You: /spkt-learn
 
 Agent: 8 neurons追加（Multi-Head Attention, Scaled Dot-Product, ...）。
        6 synapses作成、引用用にSource紐付け。
+```
 
+### `/spkt-qabot` — 聞いて引き出す
+
+Brainに自然言語で質問できます。回答にはソースの引用が含まれます。
+検索品質は会話ごとに改善されます — 役に立たない結果は自動的にペナルティされ、
+役立つ結果はブーストされます。
+
+```
 You: /spkt-qabot
      Multi-Head Attentionとシングルヘッドの違いは？
 
@@ -29,21 +42,13 @@ Agent: Multi-Head Attentionは複数のAttention関数を並列実行し...
        - [Attention Is All You Need](https://arxiv.org/abs/1706.03762)
 ```
 
-### /spkt-learn → /spkt-tutor : AI学習パートナー
+### `/spkt-tutor` — 任せて学ぶ
 
-学習素材からナレッジグラフを構築し、AIチューターに
-教えてもらえます。前提知識を検出し、難易度を調整し、
-間違いにはフィードバックが付きます — 「正解」「不正解」だけではありません。
+ナレッジグラフの上に構築されたAIチューター。前提知識を検出し、
+難易度を調整し、間違いにはフィードバックが付きます
+— 「正解」「不正解」だけではありません。
 
 ```
-You: /spkt-learn
-     圏論を勉強中。キーコンセプト:
-     - Functor: 圏の間の構造を保つ写像
-     - 自然変換: Functor間の射
-     - Monad: 自己関手の圏におけるモノイド
-
-Agent: 3 neurons追加、2 synapses作成（Monad/自然変換 --requires--> Functor）。
-
 You: /spkt-tutor
 
 Tutor: まずFunctorから始めましょう — 他の2つの前提知識です。
@@ -52,12 +57,12 @@ Tutor: まずFunctorから始めましょう — 他の2つの前提知識です
 
 ## 仕組み
 
-1. **スマートなスケジューリング** — 各コンセプトに理解度に基づく復習タイミングがあります
+1. **スマートなスケジューリング** — 各コンセプトに理解度に基づく復習タイミング
    （[FSRS](https://github.com/open-spaced-repetition/fsrs4anki)）
 2. **活性化の伝播** — 一つのコンセプトを復習すると、関連コンセプトの
-   復習タイミングが近づきます。一緒に使う接続は強くなります。
-3. **検索の最適化** — 関連度 × 記憶の強さ × グラフ中心性でランク付けします。
-   フィードバックで継続的に改善されます。
+   復習タイミングが近づく。一緒に使う接続は強くなる。
+3. **検索の最適化** — 関連度 × 記憶の強さ × グラフ中心性でランク付け。
+   フィードバックで継続的に改善。
 
 ## クイックスタート
 
@@ -66,24 +71,23 @@ Tutor: まずFunctorから始めましょう — 他の2つの前提知識です
 pip install spikuit
 
 # Brainの初期化（対話式ウィザード）
-# エンベディング設定やAgent CLIスキル（/spkt-tutor, /spkt-learn, /spkt-qabot）のインストールも行えます
 spkt init
 ```
 
 Agent CLI（Claude Code、Cursor、Codex）から：
 
 ```
-/spkt-learn    → 会話、メモ、URLからナレッジを追加
-/spkt-qabot    → 質問して引用付きの回答を得る
-/spkt-tutor    → レベルに合わせたAIチューターと学ぶ
+/spkt-learn    → 話して取り込む。会話でナレッジをキュレーション。
+/spkt-qabot    → 聞いて引き出す。引用付きの回答をナレッジグラフから。
+/spkt-tutor    → 任せて学ぶ。レベルに合わせたAIチューターと。
 ```
 
 `spkt` コマンドを直接使うこともできます:
 
 ```bash
-spkt learn "https://example.com/article" -d cs --json
-spkt retrieve "query"
-spkt communities --detect
+spkt learn ./papers/ -d cs --json     # ディレクトリ一括取り込み
+spkt retrieve "query" --filter domain=math
+spkt export -o brain.json --format json
 spkt visualize
 ```
 

@@ -105,11 +105,31 @@ spkt retrieve "圏論"
 spkt embed-all
 ```
 
+## ソースの取り込み
+
+```bash
+# URLを取り込む
+spkt learn "https://example.com/article" -d cs --json
+
+# ディレクトリを一括取り込み
+spkt learn ./papers/ -d cs --json
+```
+
 ## 可視化
 
 ```bash
 # インタラクティブなHTMLグラフを生成
 spkt visualize
+```
+
+## エクスポート
+
+```bash
+# フルバックアップ
+spkt export -o backup.tar.gz
+
+# QABotバンドル（ポータブルな読み取り専用DB）
+spkt export --format qabot -o qa-bundle.db
 ```
 
 ## グレード一覧

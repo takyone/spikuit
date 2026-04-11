@@ -66,11 +66,44 @@ spkt add "# Functor\n\n圏の間の構造を保つ写像。" -t concept -d math
 
 ```bash
 spkt add "# 重要な発見" --source-url "https://paper.com" --source-title "論文"
-spkt learn "https://paper.com" -d cs --json    # 一括取り込み
+spkt learn "https://paper.com" -d cs --json    # URL取り込み
+spkt learn ./papers/ -d cs --json              # ディレクトリ一括取り込み
 ```
 
 1つのソースから複数のNeuronが生成できます（1:N）。
 複数のNeuronが同じソースを共有できます（M:N）。URLで重複排除されます。
+
+#### メタデータレイヤー
+
+Sourceは2種類のメタデータを持てます:
+
+| レイヤー | 目的 | 使われ方 |
+|---------|------|---------|
+| **filterable** | フィルタ用の構造化キーバリュー | SQL WHERE — キーがなければ結果から除外 |
+| **searchable** | 関連度を上げるフリーテキスト | エンベディング入力に結合 — セマンティック検索を改善 |
+
+```jsonl
+{"file_name": "paper.md", "filterable": {"year": "2024", "venue": "NeurIPS"}, "searchable": {"abstract": "We propose..."}}
+```
+
+filterableは厳密です: `--filter year=2024` は `year` キーの値が `2024` のSourceだけを返します。
+キーのないSourceは結果から除外されます。
+
+searchableは柔軟です: Neuronコンテンツの前に付加してからエンベディングするので、
+メタデータの意味がベクトルに反映されます。
+
+#### ソース鮮度管理
+
+URLソースは最終取得日時を記録し、古くなったものを検出できます:
+
+```bash
+spkt refresh --stale 30           # 30日以上未取得のSourceを再取得
+spkt refresh <source-id>          # 特定のSourceを再取得
+```
+
+条件付きGET（ETag / Last-Modified）で帯域を節約します。
+コンテンツが変わっていれば関連Neuronを自動で再エンベディングします。
+404を返すSourceは `unreachable` としてマークされます。
 
 ### コミュニティ
 
@@ -160,12 +193,44 @@ BrainのLLM駆動インタラクションモード：
 セッションは**永続的**（フィードバックが将来に活用）または
 **一時的**（セッション終了で破棄）にできます。
 
+## エクスポートとデプロイ
+
+### QABotバンドル
+
+**QABotバンドル**は検索に必要なものだけを詰めた、ポータブルな読み取り専用SQLiteです:
+Neuron、Synapse、エンベディング、出典情報。
+
+```bash
+spkt export --format qabot -o qa-bundle.db
+```
+
+FSRSスケジュール、復習履歴、生ソースファイルは含みません —
+知識と検索用ベクトルだけです。
+
+`Circuit(read_only=True)` で読み込みます:
+
+```python
+circuit = Circuit(db_path="qa-bundle.db", read_only=True)
+results = await circuit.retrieve("query")  # 動作する
+await circuit.add_neuron(...)              # ReadOnlyError
+```
+
+用途: QABotをサーバーにデプロイ、復習データなしでBrainを共有、
+静的なRAGエンドポイントの構築。
+
+### その他のフォーマット
+
+| フォーマット | コマンド | 用途 |
+|------------|---------|------|
+| tarball | `spkt export -o backup.tar.gz` | フルバックアップ |
+| JSON | `spkt export --format json -o brain.json` | 共有、検査 |
+
 ## アーキテクチャ
 
 ```
 spikuit-core/     # 純粋エンジン（LLM依存なし）
 ├── Circuit       #   ナレッジグラフ + FSRS + 伝播
-├── Embedder      #   プラガブルなテキストエンベディング
+├── Embedder      #   プラガブルなテキストエンベディング（タスクタイププレフィックス対応）
 ├── Sessions      #   QABot, Learn, Tutor
 └── Learn         #   クイズ戦略（Flashcard, AutoQuiz）
 
@@ -176,5 +241,5 @@ spikuit-agents/   # エージェントスキルとアダプター
 コアエンジンは**LLM非依存** — すべての`spkt`コマンドはLLMなしで動作します。
 セッションとエージェントスキルがLLM駆動のインタラクションを追加します。
 
-アルゴリズムの詳細（FSRS、グラフ伝播、スコアリング式）は
+アルゴリズムの詳細（FSRS、グラフ伝播、スコアリング式、エンベディングパイプライン）は
 [付録: アルゴリズム](appendix.ja.md)を参照してください。

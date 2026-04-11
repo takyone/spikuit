@@ -106,11 +106,31 @@ spkt retrieve "category theory"
 spkt embed-all
 ```
 
+## Ingest Sources
+
+```bash
+# Ingest a URL
+spkt learn "https://example.com/article" -d cs --json
+
+# Ingest a directory of files
+spkt learn ./papers/ -d cs --json
+```
+
 ## Visualize
 
 ```bash
 # Generate interactive HTML graph
 spkt visualize
+```
+
+## Export
+
+```bash
+# Full backup
+spkt export -o backup.tar.gz
+
+# Portable QABot bundle
+spkt export --format qabot -o qa-bundle.db
 ```
 
 ## Grade Scale

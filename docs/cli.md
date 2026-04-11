@@ -56,9 +56,11 @@ spkt config --json
 ### `spkt embed-all`
 
 Backfill embeddings for existing neurons that don't have one yet.
+Shows a plan (neuron count + estimated tokens) before proceeding.
 
 ```bash
-spkt embed-all
+spkt embed-all              # Interactive — shows plan, asks for confirmation
+spkt embed-all --yes        # Skip confirmation
 ```
 
 ## Knowledge Management
@@ -82,13 +84,24 @@ spkt add "Content" -t concept --source-url "https://example.com/paper.pdf" --sou
 
 ### `spkt list`
 
-List neurons with optional filters.
+List neurons with optional filters. Also supports metadata and domain discovery.
 
 ```bash
 spkt list
 spkt list -t concept -d math
 spkt list --limit 50
+
+# Metadata discovery
+spkt list --meta-keys --json          # All filterable/searchable keys across sources
+spkt list --meta-values year --json   # Distinct values for a key (with counts)
+spkt list --domains --json            # All domains with neuron counts
 ```
+
+| Option | Description |
+|--------|-------------|
+| `--meta-keys` | List all metadata keys (filterable + searchable) |
+| `--meta-values KEY` | List distinct values for a metadata key |
+| `--domains` | List all domains with neuron counts |
 
 ### `spkt inspect`
 
@@ -158,18 +171,36 @@ spkt quiz --limit 10
 
 ### `spkt learn`
 
-Ingest a source file or URL for agent-driven chunking.
-Creates a Source record and outputs the content for processing.
+Ingest a URL, file, or directory. Creates Source records, extracts content,
+and outputs it for agent-driven chunking.
 
 ```bash
+# Single URL
 spkt learn "https://example.com/article" -d cs --json
+
+# Single file
 spkt learn ./notes.md -d math --json
+
+# Directory (batch ingestion)
+spkt learn ./papers/ -d cs --json
 ```
 
 | Option | Description |
 |--------|-------------|
 | `-d`, `--domain` | Domain tag for ingested content |
-| `--title` | Override source title |
+| `--title` | Override source title (single file/URL only) |
+| `--force` | Truncate oversized searchable metadata instead of aborting |
+
+**Directory ingestion** reads all text files (`.md`, `.txt`, `.rst`, `.html`, etc.)
+from the directory. Place a `metadata.jsonl` sidecar file to attach metadata:
+
+```jsonl
+{"file_name": "paper1.md", "title": "Paper One", "filterable": {"year": "2024", "venue": "NeurIPS"}, "searchable": {"abstract": "We propose..."}}
+{"file_name": "paper2.md", "filterable": {"year": "2023"}}
+```
+
+If any file's searchable metadata exceeds `max_searchable_chars` (default: 500),
+the command aborts with a per-file report. Use `--force` to truncate instead.
 
 ## Communities
 
@@ -195,7 +226,16 @@ FSRS retrievability, graph centrality, and review pressure.
 ```bash
 spkt retrieve "category theory"
 spkt retrieve "functor" --limit 5
+
+# Filtered retrieval
+spkt retrieve "attention" --filter year=2017
+spkt retrieve "GNN" --filter domain=cs --filter venue=NeurIPS
 ```
+
+| Option | Description |
+|--------|-------------|
+| `--limit`, `-n` | Max results (default: 10) |
+| `--filter KEY=VALUE` | Filter by neuron field (`type`, `domain`) or source filterable metadata. Repeatable. Strict: missing key = excluded. |
 
 ## Visualization
 
@@ -206,6 +246,105 @@ Generate an interactive HTML graph visualization.
 ```bash
 spkt visualize
 spkt visualize -o my-graph.html
+```
+
+## Source Management
+
+### `spkt source list`
+
+List all sources with neuron counts.
+
+```bash
+spkt source list
+spkt source list --json
+```
+
+### `spkt source inspect`
+
+Show source details and attached neurons.
+
+```bash
+spkt source inspect <source-id>
+spkt source inspect <source-id> --json
+```
+
+### `spkt source update`
+
+Update source metadata (URL, title, author).
+
+```bash
+spkt source update <source-id> --url "https://new-url.com"
+spkt source update <source-id> --title "New Title" --author "Author Name"
+```
+
+## Domain Management
+
+### `spkt domain rename`
+
+Rename a domain across all neurons.
+
+```bash
+spkt domain rename old-name new-name
+```
+
+### `spkt domain merge`
+
+Merge multiple domains into one.
+
+```bash
+spkt domain merge domain1 domain2 --into target-domain
+```
+
+## Source Freshness
+
+### `spkt refresh`
+
+Re-fetch URL sources to check for content changes. Uses conditional GET
+(ETag / Last-Modified) to minimize bandwidth. Updated content triggers
+re-embedding of affected neurons.
+
+```bash
+spkt refresh <source-id>          # Refresh a specific source
+spkt refresh --stale 30           # Refresh sources not fetched in 30+ days
+spkt refresh --all                # Refresh all URL sources
+```
+
+Sources returning 404 are flagged as `unreachable`.
+
+## Export / Import
+
+### `spkt export`
+
+Export a Brain for backup, sharing, or deployment.
+
+```bash
+# Tarball (full backup)
+spkt export -o backup.tar.gz
+
+# JSON bundle (portable, human-readable)
+spkt export --format json -o brain.json
+spkt export --format json --include-embeddings -o brain-full.json
+
+# QABot bundle (read-only SQLite for deployment)
+spkt export --format qabot -o qa-bundle.db
+```
+
+| Format | Contents | Use case |
+|--------|----------|----------|
+| `tar` (default) | Full `.spikuit/` directory | Backup, migration |
+| `json` | Neurons, synapses, sources as JSON | Sharing, inspection |
+| `qabot` | Minimal SQLite with embeddings | Portable RAG deployment |
+
+The **QABot bundle** is a self-contained SQLite file that includes neurons,
+synapses, embeddings, and source citations — but excludes FSRS state,
+review history, and raw source files. Load it with `Circuit(read_only=True)`.
+
+### `spkt import`
+
+Import a tarball backup.
+
+```bash
+spkt import backup.tar.gz
 ```
 
 ## Statistics

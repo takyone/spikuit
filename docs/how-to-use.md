@@ -62,6 +62,73 @@ spkt inspect <neuron-id>
 spkt stats
 ```
 
+### Ingest a Directory
+
+```bash
+# Ingest all text files with metadata
+spkt learn ./papers/ -d cs --json
+
+# With a metadata.jsonl sidecar
+echo '{"file_name": "paper1.md", "filterable": {"year": "2024"}, "searchable": {"abstract": "..."}}' > papers/metadata.jsonl
+spkt learn ./papers/ -d cs --json
+```
+
+### Filtered Retrieval
+
+```bash
+# Filter by source metadata
+spkt retrieve "attention mechanism" --filter year=2017
+
+# Combine multiple filters (AND logic)
+spkt retrieve "GNN" --filter domain=cs --filter venue=NeurIPS
+
+# Discover available filter keys
+spkt list --meta-keys --json
+spkt list --meta-values year --json
+spkt list --domains --json
+```
+
+### Source Management
+
+```bash
+# List all sources
+spkt source list --json
+
+# Inspect a source (details + attached neurons)
+spkt source inspect <source-id> --json
+
+# Fix a wrong URL
+spkt source update <source-id> --url "https://correct-url.com"
+
+# Rename or merge domains
+spkt domain rename ml machine-learning
+spkt domain merge ai ml --into machine-learning
+```
+
+### Source Freshness
+
+```bash
+# Re-fetch stale URL sources
+spkt refresh --stale 30
+
+# Re-fetch a specific source
+spkt refresh <source-id>
+```
+
+### Export & Import
+
+```bash
+# Full backup
+spkt export -o backup.tar.gz
+spkt import backup.tar.gz
+
+# JSON for sharing or inspection
+spkt export --format json -o brain.json
+
+# Portable QABot bundle (read-only, with embeddings)
+spkt export --format qabot -o qa-bundle.db
+```
+
 ### Visualize
 
 ```bash

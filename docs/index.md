@@ -1,21 +1,24 @@
 # Spikuit
 
-**A knowledge base that gets smarter the more you use it.**
+**Knowledge, curated through conversation.**
 
 ---
 
 Spikuit (spike + circuit, pronounced /spaɪ.kɪt/) is a personal knowledge system
-where **searching, reviewing, and asking questions all make the system better** —
-automatically.
+where an AI agent handles the hardest parts of knowledge management —
+ingestion, structuring, and maintenance — through dialogue.
 
-## What can you do with it?
+Traditional RAG systems break down at data curation: chunking, tagging,
+connecting, keeping things fresh. Spikuit solves this with
+**Conversational Curation** — the agent curates your knowledge base
+as you talk to it.
 
-### /spkt-learn → /spkt-qabot : Self-improving RAG
+## Three skills, one loop
 
-Feed articles, notes, or URLs into your brain, then query it with
-natural language. Answers include source citations. Retrieval quality
-improves with every conversation — unhelpful results are automatically
-penalized, helpful ones are boosted.
+### `/spkt-learn` — Talk it in.
+
+Feed articles, notes, or URLs into your Brain. The agent chunks content,
+discovers relations, and builds your knowledge graph — you just talk.
 
 ```
 You: /spkt-learn
@@ -23,7 +26,15 @@ You: /spkt-learn
 
 Agent: Added 8 neurons from "Attention Is All You Need".
        6 synapses created, source linked for citation.
+```
 
+### `/spkt-qabot` — Ask it back.
+
+Query your Brain with natural language. Answers include source citations.
+Retrieval quality improves with every conversation — unhelpful results are
+automatically penalized, helpful ones are boosted.
+
+```
 You: /spkt-qabot
      How does multi-head attention differ from single-head?
 
@@ -32,25 +43,17 @@ Agent: Multi-head attention runs multiple attention functions in parallel...
        - [Attention Is All You Need](https://arxiv.org/abs/1706.03762)
 ```
 
-### /spkt-learn → /spkt-tutor : AI study partner
+### `/spkt-tutor` — Let it teach you.
 
-Build a knowledge graph from your study material, then let an AI tutor
-teach, quiz, and coach you. It detects prerequisites, adapts difficulty,
-and gives feedback on mistakes — not just "correct" or "wrong".
+An AI tutor built on your knowledge graph. It detects prerequisites,
+adapts difficulty, and gives feedback on mistakes — not just "correct"
+or "wrong".
 
 ```
-You: /spkt-learn
-     I'm studying category theory. Key concepts:
-     - Functor: maps between categories preserving structure
-     - Natural Transformation: morphism between functors
-     - Monad: monoid in the category of endofunctors
-
-Agent: Added 3 neurons, 2 synapses (Monad/NatTrans --requires--> Functor).
-
 You: /spkt-tutor
 
 Tutor: Let's start with Functor — it's a prerequisite for the other two.
-       [teaches, quizzes, gives feedback, re-explains weak areas]
+       [teaches → quizzes → gives feedback → re-explains weak areas]
 ```
 
 ## How It Works
@@ -69,24 +72,23 @@ Tutor: Let's start with Functor — it's a prerequisite for the other two.
 pip install spikuit
 
 # Initialize a brain (interactive wizard)
-# Configures embeddings and installs Agent CLI skills (/spkt-tutor, /spkt-learn, /spkt-qabot)
 spkt init
 ```
 
 Then, from your Agent CLI (Claude Code, Cursor, Codex):
 
 ```
-/spkt-learn    → Add knowledge from conversation, notes, or URLs
-/spkt-qabot    → Ask questions — get cited answers from your knowledge graph
-/spkt-tutor    → Study with an AI tutor that adapts to your level
+/spkt-learn    → Talk it in. Curate knowledge through conversation.
+/spkt-qabot    → Ask it back. Get cited answers from your knowledge graph.
+/spkt-tutor    → Let it teach you. Study with an AI that adapts to your level.
 ```
 
 Or use `spkt` commands directly:
 
 ```bash
-spkt learn "https://example.com/article" -d cs --json
-spkt retrieve "query"
-spkt communities --detect
+spkt learn ./papers/ -d cs --json     # Ingest a directory with metadata
+spkt retrieve "query" --filter domain=math
+spkt export -o brain.json --format json
 spkt visualize
 ```
 

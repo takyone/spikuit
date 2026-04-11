@@ -194,6 +194,55 @@ circuit.fire(spike)
 | `weight_floor` | 0.05 | 最小エッジ重み |
 | `weight_ceiling` | 1.0 | 最大エッジ重み |
 
+## エンベディングパイプライン
+
+### 入力の前処理
+
+エンベディング前に、Neuronコンテンツは以下のパイプラインを通ります:
+
+```
+生のNeuronコンテンツ
+  → YAMLフロントマターを除去
+  → フロントマターから [Section: ...] を付加（あれば）
+  → Sourceのsearchableメタデータから [key: value] を付加（max_searchable_charsで切り詰め）
+  → 最終エンベディング入力
+```
+
+これにより、構造的ノイズ（フロントマターのキー、書式）を除外しつつ、
+生テキスト以上のセマンティックコンテキストをエンベディングに反映します。
+
+### タスクタイププレフィックス
+
+多くのエンベディングモデルは、入力の目的（文書 vs クエリ）をタグ付けすると
+精度が向上します。`config.toml` の `prefix_style` で設定します:
+
+```toml
+[embedder]
+prefix_style = "nomic"    # "nomic", "google", "cohere", "none"
+```
+
+| スタイル | 文書プレフィックス | クエリプレフィックス |
+|---------|------------------|-------------------|
+| `nomic` | `search_document: ` | `search_query: ` |
+| `google` | `RETRIEVAL_DOCUMENT: ` | `RETRIEVAL_QUERY: ` |
+| `cohere` | `search_document: ` | `search_query: ` |
+| `none`（デフォルト） | — | — |
+
+プレフィックスは自動で適用されます:
+- `EmbeddingType.DOCUMENT` — Neuronの追加・更新、`embed-all` 実行時
+- `EmbeddingType.QUERY` — `retrieve()` 呼び出し時
+
+### searchableメタデータの結合式
+
+Sourceにsearchableメタデータがある場合、エンベディング入力は:
+
+```
+[key1: value1] [key2: value2] [Section: section_name] 本文テキスト
+```
+
+searchableの合計は `max_searchable_chars`（デフォルト: 500）で切り詰められ、
+メタデータがエンベディングを支配しないようにします。
+
 ## エンベッダープロバイダー
 
 | プロバイダー | API | 用途 |

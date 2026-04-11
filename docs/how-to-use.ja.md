@@ -62,6 +62,73 @@ spkt inspect <neuron-id>
 spkt stats
 ```
 
+### ディレクトリの一括取り込み
+
+```bash
+# テキストファイルをメタデータ付きで取り込み
+spkt learn ./papers/ -d cs --json
+
+# metadata.jsonlを使ってメタデータを付与
+echo '{"file_name": "paper1.md", "filterable": {"year": "2024"}, "searchable": {"abstract": "..."}}' > papers/metadata.jsonl
+spkt learn ./papers/ -d cs --json
+```
+
+### フィルタ付き検索
+
+```bash
+# Sourceメタデータでフィルタ
+spkt retrieve "attention mechanism" --filter year=2017
+
+# 複数フィルタの組み合わせ（AND条件）
+spkt retrieve "GNN" --filter domain=cs --filter venue=NeurIPS
+
+# フィルタに使えるキーを確認
+spkt list --meta-keys --json
+spkt list --meta-values year --json
+spkt list --domains --json
+```
+
+### ソース管理
+
+```bash
+# Source一覧
+spkt source list --json
+
+# Sourceの詳細（紐づくNeuron含む）
+spkt source inspect <source-id> --json
+
+# URLの修正
+spkt source update <source-id> --url "https://correct-url.com"
+
+# ドメインのリネーム・統合
+spkt domain rename ml machine-learning
+spkt domain merge ai ml --into machine-learning
+```
+
+### ソース鮮度管理
+
+```bash
+# 古いURLソースを再取得
+spkt refresh --stale 30
+
+# 特定のSourceを再取得
+spkt refresh <source-id>
+```
+
+### エクスポート / インポート
+
+```bash
+# フルバックアップ
+spkt export -o backup.tar.gz
+spkt import backup.tar.gz
+
+# JSON（共有・検査用）
+spkt export --format json -o brain.json
+
+# QABotバンドル（読み取り専用、エンベディング付き）
+spkt export --format qabot -o qa-bundle.db
+```
+
 ### 可視化
 
 ```bash
