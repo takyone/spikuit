@@ -116,6 +116,18 @@ All commands support `--json` for machine-readable output and `--brain` to targe
 - **AutoQuiz**: LLM-generated questions, programmatic grading
 - **1 Quiz : N Neurons**: QuizRequest has primary + supporting neurons, QuizResult has per-neuron grades
 
+## Roadmap & Planning
+
+Plans are persisted as **GitHub Milestones + Issues**, not local files.
+
+- Each version milestone contains all issues for that release
+- Issues have labels (`core`, `cli`, `agent`, `docs`) and dependency notes
+- Check current roadmap: `gh issue list --milestone "<milestone>"`
+- When planning a new version, create a Milestone and break it into Issues
+- Close issues as work is completed; Milestone progress bar tracks overall status
+
+This ensures plans survive across sessions and are always queryable via `gh`.
+
 ## Key Algorithms
 
 - **APPNP**: Personalized PageRank propagation. Activation flows along outgoing edges.

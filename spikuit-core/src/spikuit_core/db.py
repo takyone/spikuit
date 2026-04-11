@@ -10,7 +10,7 @@ from typing import Any
 import aiosqlite
 import sqlite_vec
 
-from .models import Grade, Neuron, QuizItem, QuizItemRole, ScaffoldLevel, Spike, Synapse, SynapseType
+from .models import Grade, Neuron, QuizItem, QuizItemRole, ScaffoldLevel, Source, Spike, Synapse, SynapseType
 
 DEFAULT_DB_PATH: Path = Path.home() / ".spikuit" / "spikuit.db"
 
@@ -92,6 +92,29 @@ CREATE TABLE IF NOT EXISTS quiz_item_neuron (
 );
 
 CREATE INDEX IF NOT EXISTS idx_quiz_item_neuron_nid ON quiz_item_neuron(neuron_id);
+
+CREATE TABLE IF NOT EXISTS source (
+    id TEXT PRIMARY KEY,
+    url TEXT,
+    title TEXT,
+    author TEXT,
+    section TEXT,
+    excerpt TEXT,
+    storage_uri TEXT,
+    content_hash TEXT,
+    notes TEXT,
+    accessed_at TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS neuron_source (
+    neuron_id TEXT NOT NULL REFERENCES neuron(id) ON DELETE CASCADE,
+    source_id TEXT NOT NULL REFERENCES source(id) ON DELETE CASCADE,
+    PRIMARY KEY (neuron_id, source_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_source_url ON source(url);
+CREATE INDEX IF NOT EXISTS idx_neuron_source_sid ON neuron_source(source_id);
 """
 
 
@@ -121,9 +144,22 @@ class Database:
         await self._conn.execute("PRAGMA foreign_keys=ON")
         await self._conn.executescript(_SCHEMA)
         await self._conn.commit()
+        await self._run_migrations()
         # Load sqlite-vec extension and create vec table if dimension is set
         if self._embedding_dimension is not None:
             await self._init_vec_table(self._embedding_dimension)
+
+    async def _run_migrations(self) -> None:
+        """Run schema migrations for existing databases."""
+        migrations = [
+            "ALTER TABLE neuron ADD COLUMN community_id INTEGER",
+        ]
+        for sql in migrations:
+            try:
+                await self.conn.execute(sql)
+                await self.conn.commit()
+            except Exception:
+                pass  # Column already exists
 
     async def _init_vec_table(self, dimension: int) -> None:
         """Initialize sqlite-vec virtual table for embeddings."""
@@ -568,6 +604,89 @@ class Database:
             created_at=_parse_ts(row["created_at"]),
         )
 
+    # -- Source CRUD --------------------------------------------------------
+
+    async def insert_source(self, source: Source) -> None:
+        await self.conn.execute(
+            """INSERT INTO source (id, url, title, author, section, excerpt,
+               storage_uri, content_hash, notes, accessed_at, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                source.id,
+                source.url,
+                source.title,
+                source.author,
+                source.section,
+                source.excerpt,
+                source.storage_uri,
+                source.content_hash,
+                source.notes,
+                _ts(source.accessed_at) if source.accessed_at else None,
+                _ts(source.created_at),
+            ),
+        )
+        await self.conn.commit()
+
+    async def get_source(self, source_id: str) -> Source | None:
+        rows = await self.conn.execute_fetchall(
+            "SELECT * FROM source WHERE id = ?", (source_id,)
+        )
+        return _row_to_source(rows[0]) if rows else None
+
+    async def find_source_by_url(self, url: str) -> Source | None:
+        rows = await self.conn.execute_fetchall(
+            "SELECT * FROM source WHERE url = ?", (url,)
+        )
+        return _row_to_source(rows[0]) if rows else None
+
+    async def get_sources_for_neuron(self, neuron_id: str) -> list[Source]:
+        rows = await self.conn.execute_fetchall(
+            """SELECT s.* FROM source s
+               JOIN neuron_source ns ON ns.source_id = s.id
+               WHERE ns.neuron_id = ?
+               ORDER BY s.created_at DESC""",
+            (neuron_id,),
+        )
+        return [_row_to_source(r) for r in rows]
+
+    async def get_neurons_for_source(self, source_id: str) -> list[str]:
+        rows = await self.conn.execute_fetchall(
+            "SELECT neuron_id FROM neuron_source WHERE source_id = ?",
+            (source_id,),
+        )
+        return [r["neuron_id"] for r in rows]
+
+    async def attach_source(self, neuron_id: str, source_id: str) -> None:
+        await self.conn.execute(
+            "INSERT OR IGNORE INTO neuron_source (neuron_id, source_id) VALUES (?, ?)",
+            (neuron_id, source_id),
+        )
+        await self.conn.commit()
+
+    async def detach_source(self, neuron_id: str, source_id: str) -> None:
+        await self.conn.execute(
+            "DELETE FROM neuron_source WHERE neuron_id = ? AND source_id = ?",
+            (neuron_id, source_id),
+        )
+        await self.conn.commit()
+
+    # -- Community ----------------------------------------------------------
+
+    async def batch_update_community_ids(self, mapping: dict[str, int]) -> None:
+        """Set community_id for multiple neurons in a single transaction."""
+        for nid, cid in mapping.items():
+            await self.conn.execute(
+                "UPDATE neuron SET community_id = ? WHERE id = ?", (cid, nid)
+            )
+        await self.conn.commit()
+
+    async def get_community_ids(self) -> dict[str, int]:
+        """Return {neuron_id: community_id} for neurons with a community."""
+        rows = await self.conn.execute_fetchall(
+            "SELECT id, community_id FROM neuron WHERE community_id IS NOT NULL"
+        )
+        return {r["id"]: r["community_id"] for r in rows}
+
     # -- Retrieve log -------------------------------------------------------
 
     async def log_retrieve(self, query: str, neuron_ids: list[str]) -> None:
@@ -605,6 +724,22 @@ def _row_to_synapse(row: aiosqlite.Row) -> Synapse:
         last_co_fire=_parse_ts(row["last_co_fire"]) if row["last_co_fire"] else None,
         created_at=_parse_ts(row["created_at"]),
         updated_at=_parse_ts(row["updated_at"]),
+    )
+
+
+def _row_to_source(row: aiosqlite.Row) -> Source:
+    return Source(
+        id=row["id"],
+        url=row["url"],
+        title=row["title"],
+        author=row["author"],
+        section=row["section"],
+        excerpt=row["excerpt"],
+        storage_uri=row["storage_uri"],
+        content_hash=row["content_hash"],
+        notes=row["notes"],
+        accessed_at=_parse_ts(row["accessed_at"]) if row["accessed_at"] else None,
+        created_at=_parse_ts(row["created_at"]),
     )
 
 

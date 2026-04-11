@@ -16,10 +16,12 @@ from .models import (
     QuizResult,
     Scaffold,
     ScaffoldLevel,
+    Source,
     Spike,
     Synapse,
     SynapseType,
     TutorAction,
+    strip_frontmatter,
 )
 from .learn import AutoQuiz, Flashcard, Learn
 from .scaffold import compute_scaffold
@@ -39,11 +41,13 @@ __all__ = [
     "QuizResult",
     "Scaffold",
     "ScaffoldLevel",
+    "Source",
     "Spike",
     "Synapse",
     "SynapseType",
     "TutorAction",
     "TutorSession",
+    "strip_frontmatter",
     "TutorState",
     "compute_scaffold",
     "Embedder",

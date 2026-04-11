@@ -237,6 +237,9 @@ class Plasticity(msgspec.Struct, kw_only=True, frozen=True):
     weight_floor: float = 0.05
     weight_ceiling: float = 1.0
 
+    # Community
+    community_weight: float = 0.1
+
 
 # ---------------------------------------------------------------------------
 # Scaffold
@@ -423,6 +426,51 @@ class ExamResult(msgspec.Struct, kw_only=True):
 
 
 # ---------------------------------------------------------------------------
+# Source
+# ---------------------------------------------------------------------------
+
+
+class Source(msgspec.Struct, kw_only=True):
+    """A reference to an external source document.
+
+    Sources have a 1:N relationship with Neurons — one source can
+    produce multiple concept Neurons. Raw content is stored on disk
+    (or cloud storage), the DB holds metadata and a content hash.
+
+    Attributes:
+        id: Unique identifier (``s-<hex12>``).
+        url: Original URL (for web sources).
+        title: Human-readable title.
+        author: Author or publisher.
+        section: Section/chapter/page reference within the source.
+        excerpt: Short excerpt for context.
+        storage_uri: Where raw content is stored (``file://``, ``s3://``, etc.).
+        content_hash: SHA256 of the raw content (for version detection).
+        notes: User's ingestion intent or instructions.
+        accessed_at: When the source was fetched.
+        created_at: UTC timestamp, auto-set on creation.
+    """
+
+    id: str = ""
+    url: str | None = None
+    title: str | None = None
+    author: str | None = None
+    section: str | None = None
+    excerpt: str | None = None
+    storage_uri: str | None = None
+    content_hash: str | None = None
+    notes: str | None = None
+    accessed_at: datetime | None = None
+    created_at: datetime = msgspec.UNSET  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if not self.id:
+            self.id = f"s-{uuid4().hex[:12]}"
+        if self.created_at is msgspec.UNSET:
+            self.created_at = datetime.now(timezone.utc)
+
+
+# ---------------------------------------------------------------------------
 # Frontmatter parser
 # ---------------------------------------------------------------------------
 
@@ -447,3 +495,17 @@ def _parse_frontmatter(content: str) -> dict[str, Any]:
         if value:
             result[key.strip()] = value
     return result
+
+
+def strip_frontmatter(content: str) -> str:
+    """Return the body of Markdown content, stripping YAML frontmatter.
+
+    Used to extract the embedding-target portion of a Neuron's content.
+    Frontmatter (source refs, metadata) should NOT be included in embeddings.
+    """
+    if not content.startswith("---"):
+        return content
+    parts = content.split("---", 2)
+    if len(parts) < 3:
+        return content
+    return parts[2].strip()
