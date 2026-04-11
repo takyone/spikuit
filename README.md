@@ -36,60 +36,63 @@ you combine a knowledge graph, spaced repetition, and AI agents into one system.
 
 ## Use Cases
 
-### "I want to remember what I learn"
+### /learn → /qabot : Self-improving RAG
+
+Feed sources into your brain, then query it. Retrieval quality improves
+with every conversation — no re-indexing needed.
 
 ```
+You: /learn
+     Here's an article on attention mechanisms: https://arxiv.org/abs/1706.03762
+
+Agent: I've ingested the paper and created 8 neurons:
+       Multi-Head Attention, Scaled Dot-Product, Positional Encoding, ...
+       Connected 12 synapses to existing knowledge.
+       Source attached for citation.
+
+You: /qabot
+     How does multi-head attention differ from single-head?
+
+Agent: Multi-head attention runs multiple attention functions in parallel,
+       each with different learned projections...
+
+       Sources:
+       - [Attention Is All You Need](https://arxiv.org/abs/1706.03762) (via n-a1b2c3)
+       - n-d4e5f6: Self-Attention
+
+You: What about computational cost?
+
+Agent: [retrieves new neurons — prior unhelpful results auto-penalized]
+```
+
+### /learn → /tutor : AI study partner
+
+Build a knowledge graph from your study material, then let an AI tutor
+teach, quiz, and coach you based on what you actually know.
+
+```
+You: /learn
+     I'm studying category theory. Key concepts:
+     - A Functor maps between categories preserving structure
+     - A Natural Transformation is a morphism between functors
+     - A Monad is a monoid in the category of endofunctors
+
+Agent: Created 3 neurons, connected:
+       Monad --requires--> Functor
+       Natural Transformation --requires--> Functor
+
 You: /tutor
 
-Tutor: You have 5 concepts due. Let's start with Functor —
-       it's a prerequisite for Monad which is also due.
-       [teaches the concept, then quizzes you]
+Tutor: You have 3 new concepts. Let's start with Functor —
+       it's a prerequisite for the other two.
+       [teaches, then quizzes]
 
-You:   [answers]
+You: It's like... a mapping that keeps the structure?
 
-Tutor: Good, but you mixed up the convergence condition.
-       Here's what actually happens: ...
-       [re-explains, then tries a different question angle]
+Tutor: Right direction, but incomplete. A functor maps both objects
+       AND morphisms, and must preserve composition and identity.
+       Can you give an example of a functor between two concrete categories?
 ```
-
-Review concepts with an AI tutor that adapts to your understanding level.
-It doesn't just quiz you — it teaches weak areas, gives feedback on mistakes,
-and adjusts difficulty based on how well you know each concept.
-
-### "I want to build a knowledge base that's actually searchable"
-
-```bash
-# Add knowledge
-spkt add "# Functor\n\nA mapping between categories." -t concept -d math
-spkt add "# Monad\n\nA monoid in endofunctors." -t concept -d math
-
-# Search — results ranked by relevance, how well you know each concept,
-# and how central it is in your knowledge graph
-spkt retrieve "category theory"
-```
-
-The more you use it, the better search gets. Concepts you review often
-rank higher. Related concepts surface together. Unhelpful results
-get pushed down automatically.
-
-### "I want an AI that knows what I know"
-
-```python
-from spikuit_core import QABotSession
-
-session = QABotSession(circuit, persist=True)
-results = await session.ask("What is a functor?")
-
-# Results get better over time:
-# - Follow-up questions auto-penalize unhelpful prior results
-# - Accepting results boosts them for future queries
-# - The graph remembers what's useful across sessions
-await session.accept([results[0].neuron_id])
-```
-
-Give an AI agent a Spikuit brain, and it can search your knowledge,
-add new concepts from conversations, and track what you've mastered
-vs. what needs review.
 
 ## How It Works (in brief)
 
@@ -117,39 +120,29 @@ pip install spikuit
 # Initialize a brain (interactive wizard)
 # Configures embeddings and installs Agent CLI skills (/tutor, /learn, /qabot)
 spkt init
-
-# Add knowledge (with optional source for citation)
-spkt add "# Functor\n\nA mapping between categories." -t concept -d math
-spkt add "Content" --source-url "https://paper.com" --source-title "A Paper"
-
-# Ingest from URL or file
-spkt learn "https://example.com/article" -d cs --json
-
-# Review what's due
-spkt due
-spkt quiz
-
-# Search (community-boosted)
-spkt retrieve "functor"
-
-# Detect and view knowledge communities
-spkt communities --detect
-
-# Visualize your knowledge graph (community-colored)
-spkt visualize
 ```
 
-### Agent CLI Skills
+Then, from your Agent CLI (Claude Code, Cursor, Codex):
 
-`spkt init` can install skills for your Agent CLI (Claude Code, Cursor, Codex).
-You can also install them separately:
+```
+You: /learn
+     I want to study Rust's ownership model. Here are my notes: ...
+
+You: /qabot
+     When does Rust drop a value?
+
+You: /tutor
+     Quiz me on what I learned
+```
+
+Or use `spkt` commands directly:
 
 ```bash
-spkt skills install                    # Default: .claude/skills/
-spkt skills install -t .cursor/skills  # For Cursor
+spkt learn "https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html" -d cs --json
+spkt retrieve "ownership borrow"
+spkt communities --detect
+spkt visualize
 ```
-
-Once installed, use `/tutor`, `/learn`, or `/qabot` from your Agent CLI.
 
 ## Documentation
 

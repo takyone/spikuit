@@ -8,41 +8,47 @@ Spikuit（spike + circuit、発音: /spaɪ.kɪt/）は、**検索、復習、質
 
 ## 何ができる？
 
-### 一緒に育つナレッジグラフ
+### /learn → /qabot : 自己成長するRAG
 
-```bash
-spkt add "# Functor\n\n圏の間の構造を保つ写像。" -t concept -d math
-spkt add "# Monad\n\n自己関手の圏におけるモノイド。" -t concept -d math
-spkt link <monad-id> <functor-id> -t requires
-```
-
-コンセプトが互いにつながる。検索結果は関連度、理解度、
-グラフ内の中心性によってランク付けされます。
-
-### AIチューターと学ぶ
+記事、メモ、URLをBrainに取り込んで、自然言語で質問する。
+回答にはソースの引用が含まれる。検索品質は会話ごとに改善 —
+役に立たない結果は自動的にペナルティ、役立つ結果はブーストされる。
 
 ```
-> /tutor
+You: /learn
+     この論文をBrainにまとめて: https://arxiv.org/abs/1706.03762
 
-Tutor: 「Functor」の理解度が低く、「Monad」の前提知識になっています。
-       まずFunctorから説明して、理解度を確認しましょう。
-       ...
+Agent: 「Attention Is All You Need」から8つのNeuronを作成。
+       既存のナレッジに接続。引用用にSourceを紐付けました。
+
+You: /qabot
+     Multi-Head Attentionとシングルヘッドの違いは？
+
+Agent: Multi-Head Attentionは複数のAttention関数を並列実行し...
+       ソース:
+       - [Attention Is All You Need](https://arxiv.org/abs/1706.03762)
+```
+
+### /learn → /tutor : AI学習パートナー
+
+学習素材からナレッジグラフを構築し、AIチューターに
+教えてもらう。前提知識を検出し、難易度を調整し、
+間違いにはフィードバック — 「正解」「不正解」だけではない。
+
+```
+You: /learn
+     圏論を勉強中。キーコンセプト:
+     - Functor: 圏の間の構造を保つ写像
+     - 自然変換: Functor間の射
+     - Monad: 自己関手の圏におけるモノイド
+
+Agent: 3つのNeuronを作成。接続: Monad --requires--> Functor
+
+You: /tutor
+
+Tutor: まずFunctorから始めましょう — 他の2つの前提知識です。
        [教える → クイズ → フィードバック → 弱い部分を再説明]
 ```
-
-ただのフラッシュカードではなく、弱点を診断し、概念を教え、
-理解をテストし、間違いをコーチングするチューター。
-
-### AIエージェントにナレッジを与える
-
-```python
-session = QABotSession(circuit, persist=True)
-results = await session.ask("Functorとは？")
-await session.accept([results[0].neuron_id])
-# → 役立った結果が将来の検索でブーストされる
-```
-
-検索品質は会話のフィードバックで改善 — 再インデックスは不要。
 
 ## 仕組み
 
@@ -62,32 +68,24 @@ pip install spikuit
 # Brainの初期化（対話式ウィザード）
 # エンベディング設定、Agent CLIスキル（/tutor, /learn, /qabot）のインストールも行えます
 spkt init
-
-# ナレッジを追加
-spkt add "# Functor\n\n圏の間の構造を保つ写像。" -t concept -d math
-
-# 復習対象を確認
-spkt due
-spkt quiz
-
-# 検索
-spkt retrieve "functor"
-
-# ナレッジグラフを可視化
-spkt visualize
 ```
 
-### Agent CLIスキル
+Agent CLI（Claude Code、Cursor、Codex）から：
 
-`spkt init` でAgent CLI（Claude Code、Cursor、Codex）向けのスキルをインストールできます。
-個別にインストールすることも可能です：
+```
+/learn    → 会話、メモ、URLからナレッジを追加
+/qabot    → 質問して引用付きの回答を得る
+/tutor    → レベルに合わせたAIチューターと学ぶ
+```
+
+`spkt` コマンドを直接使うこともできます：
 
 ```bash
-spkt skills install                    # デフォルト: .claude/skills/
-spkt skills install -t .cursor/skills  # Cursor用
+spkt learn "https://example.com/article" -d cs --json
+spkt retrieve "query"
+spkt communities --detect
+spkt visualize
 ```
-
-インストール後、Agent CLIから `/tutor`、`/learn`、`/qabot` が使えます。
 
 ## ドキュメント
 
