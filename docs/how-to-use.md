@@ -94,7 +94,7 @@ Skills add conversational interactions on top: tutoring, curation, and Q&A.
 └──────────────────────────────────────────┘
 ```
 
-### `/tutor` — AI Tutor
+### `/spkt-tutor` — AI Tutor
 
 A 1-on-1 tutor that teaches, quizzes, and coaches — not just a quiz machine.
 
@@ -104,7 +104,7 @@ quiz you to check understanding, give feedback on mistakes, or answer your quest
 **Example session:**
 
 ```
-> /tutor
+> /spkt-tutor
 
 Tutor: You have 5 concepts due. Functor has low stability and is
        a prerequisite for Monad, so let's start there.
@@ -147,7 +147,7 @@ Tutor: [FEEDBACK] Exactly! `map` is specialized to lists, while `fmap`
 | Q&A | You ask a question | Pedagogical answer using your brain's knowledge |
 | Drill | Persistent weakness | Focused repetition with varied question angles |
 
-### `/learn` — Knowledge Curation
+### `/spkt-learn` — Knowledge Curation
 
 Add knowledge through conversation. The agent structures your input,
 discovers related concepts, and creates connections.
@@ -155,7 +155,7 @@ discovers related concepts, and creates connections.
 **Example session:**
 
 ```
-> /learn
+> /spkt-learn
 
 What would you like to add?
 
@@ -186,7 +186,7 @@ Create with these connections? [Y/n]
 - Discovers related existing knowledge and suggests connections
 - Proposes types and domains based on existing patterns
 
-### `/qabot` — Knowledge Q&A
+### `/spkt-qabot` — Knowledge Q&A
 
 Ask questions and get answers from your brain. Retrieval quality
 improves through the conversation.
@@ -194,7 +194,7 @@ improves through the conversation.
 **Example session:**
 
 ```
-> /qabot
+> /spkt-qabot
 
 Ask me anything about your brain.
 

@@ -1,4 +1,4 @@
-# /tutor — AI Tutor Session
+# /spkt-tutor — AI Tutor Session
 
 A 1-on-1 tutoring agent that assesses, teaches, and coaches — not just quizzes.
 
@@ -24,7 +24,7 @@ rather than running a fixed sequence of questions.
 ## Session Flow
 
 ```
-User: /tutor
+User: /spkt-tutor
 
 Tutor: [Diagnose] Check due neurons, gaps, priorities
        → "Today you have 5 neurons due. PageRank has low stability

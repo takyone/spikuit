@@ -1,5 +1,5 @@
 ---
-name: qabot
+name: spkt-qabot
 description: Ask questions about your Spikuit brain and get answers from your knowledge graph. Retrieval quality improves as you chat — helpful results get boosted, unhelpful ones get penalized. Use when you want to search or ask questions about stored knowledge.
 allowed-tools: Bash(spkt *)
 ---

@@ -36,19 +36,19 @@ you combine a knowledge graph, spaced repetition, and AI agents into one system.
 
 ## Use Cases
 
-### /learn → /qabot : Self-improving RAG
+### /spkt-learn → /spkt-qabot : Self-improving RAG
 
 Feed sources into your brain, then query it. Retrieval quality improves
 with every conversation — no re-indexing needed.
 
 ```
-You: /learn
+You: /spkt-learn
      Here's an article on attention mechanisms: https://arxiv.org/abs/1706.03762
 
 Agent: Added 8 neurons (Multi-Head Attention, Scaled Dot-Product, ...).
        6 synapses created, source linked for citation.
 
-You: /qabot
+You: /spkt-qabot
      How does multi-head attention differ from single-head?
 
 Agent: Multi-head attention runs multiple attention functions in parallel,
@@ -62,13 +62,13 @@ You: What about computational cost?
 Agent: [prior results auto-penalized, new neurons retrieved]
 ```
 
-### /learn → /tutor : AI study partner
+### /spkt-learn → /spkt-tutor : AI study partner
 
 Build a knowledge graph from your study material, then let an AI tutor
 teach, quiz, and coach you based on what you actually know.
 
 ```
-You: /learn
+You: /spkt-learn
      I'm studying category theory. Key concepts:
      - A Functor maps between categories preserving structure
      - A Natural Transformation is a morphism between functors
@@ -76,7 +76,7 @@ You: /learn
 
 Agent: Added 3 neurons, 2 synapses (Monad/NatTrans --requires--> Functor).
 
-You: /tutor
+You: /spkt-tutor
 
 Tutor: You have 3 new concepts. Let's start with Functor —
        it's a prerequisite for the other two.
@@ -113,20 +113,20 @@ For the technical details behind these mechanisms, see
 pip install spikuit
 
 # Initialize a brain (interactive wizard)
-# Configures embeddings and installs Agent CLI skills (/tutor, /learn, /qabot)
+# Configures embeddings and installs Agent CLI skills (/spkt-tutor, /spkt-learn, /spkt-qabot)
 spkt init
 ```
 
 Then, from your Agent CLI (Claude Code, Cursor, Codex):
 
 ```
-You: /learn
+You: /spkt-learn
      I want to study Rust's ownership model. Here are my notes: ...
 
-You: /qabot
+You: /spkt-qabot
      When does Rust drop a value?
 
-You: /tutor
+You: /spkt-tutor
      Quiz me on what I learned
 ```
 
@@ -157,7 +157,7 @@ spikuit-agents/   # Agent skills and adapters
 ```
 
 The core engine is LLM-independent — `spkt` commands work standalone.
-Agent skills (`/tutor`, `/learn`, `/qabot`) add LLM-powered interactions
+Agent skills (`/spkt-tutor`, `/spkt-learn`, `/spkt-qabot`) add LLM-powered interactions
 on top, designed for tools like Claude Code.
 
 ## Development

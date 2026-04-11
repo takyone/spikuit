@@ -8,20 +8,20 @@ Spikuit（spike + circuit、発音: /spaɪ.kɪt/）は、**検索、復習、質
 
 ## 何ができますか？
 
-### /learn → /qabot : 自己成長するRAG
+### /spkt-learn → /spkt-qabot : 自己成長するRAG
 
 記事、メモ、URLをBrainに取り込んで、自然言語で質問できます。
 回答にはソースの引用が含まれます。検索品質は会話ごとに改善されます —
 役に立たない結果は自動的にペナルティされ、役立つ結果はブーストされます。
 
 ```
-You: /learn
+You: /spkt-learn
      この論文をBrainにまとめて: https://arxiv.org/abs/1706.03762
 
 Agent: 8 neurons追加（Multi-Head Attention, Scaled Dot-Product, ...）。
        6 synapses作成、引用用にSource紐付け。
 
-You: /qabot
+You: /spkt-qabot
      Multi-Head Attentionとシングルヘッドの違いは？
 
 Agent: Multi-Head Attentionは複数のAttention関数を並列実行し...
@@ -29,14 +29,14 @@ Agent: Multi-Head Attentionは複数のAttention関数を並列実行し...
        - [Attention Is All You Need](https://arxiv.org/abs/1706.03762)
 ```
 
-### /learn → /tutor : AI学習パートナー
+### /spkt-learn → /spkt-tutor : AI学習パートナー
 
 学習素材からナレッジグラフを構築し、AIチューターに
 教えてもらえます。前提知識を検出し、難易度を調整し、
 間違いにはフィードバックが付きます — 「正解」「不正解」だけではありません。
 
 ```
-You: /learn
+You: /spkt-learn
      圏論を勉強中。キーコンセプト:
      - Functor: 圏の間の構造を保つ写像
      - 自然変換: Functor間の射
@@ -44,7 +44,7 @@ You: /learn
 
 Agent: 3 neurons追加、2 synapses作成（Monad/自然変換 --requires--> Functor）。
 
-You: /tutor
+You: /spkt-tutor
 
 Tutor: まずFunctorから始めましょう — 他の2つの前提知識です。
        [教える → クイズ → フィードバック → 弱い部分を再説明]
@@ -66,16 +66,16 @@ Tutor: まずFunctorから始めましょう — 他の2つの前提知識です
 pip install spikuit
 
 # Brainの初期化（対話式ウィザード）
-# エンベディング設定やAgent CLIスキル（/tutor, /learn, /qabot）のインストールも行えます
+# エンベディング設定やAgent CLIスキル（/spkt-tutor, /spkt-learn, /spkt-qabot）のインストールも行えます
 spkt init
 ```
 
 Agent CLI（Claude Code、Cursor、Codex）から：
 
 ```
-/learn    → 会話、メモ、URLからナレッジを追加
-/qabot    → 質問して引用付きの回答を得る
-/tutor    → レベルに合わせたAIチューターと学ぶ
+/spkt-learn    → 会話、メモ、URLからナレッジを追加
+/spkt-qabot    → 質問して引用付きの回答を得る
+/spkt-tutor    → レベルに合わせたAIチューターと学ぶ
 ```
 
 `spkt` コマンドを直接使うこともできます:

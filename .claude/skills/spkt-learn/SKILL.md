@@ -1,6 +1,6 @@
 ---
-name: learn
-description: "Add new knowledge to the circuit from the current conversation. Use when the user says /learn, 'learn this', 'add this to spikuit', '覚えて', 'ナレッジに追加', '知識追加', or similar."
+name: spkt-learn
+description: "Add new knowledge to the circuit from the current conversation. Use when the user says /spkt-learn, 'learn this', 'add this to spikuit', '覚えて', 'ナレッジに追加', '知識追加', or similar."
 ---
 
 # Learn — Add Knowledge to Circuit

@@ -1,5 +1,5 @@
 ---
-name: tutor
+name: spkt-tutor
 description: AI tutor for your Spikuit brain. Diagnoses what you need to review, teaches weak concepts, quizzes you with varied questions, and gives feedback on mistakes. Use when you want to study, review, or practice.
 allowed-tools: Bash(spkt *)
 ---

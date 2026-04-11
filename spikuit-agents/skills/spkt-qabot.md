@@ -1,4 +1,4 @@
-# /qabot — RAG Chat Session
+# /spkt-qabot — RAG Chat Session
 
 Query your brain with natural language. Retrieval improves as you chat.
 
@@ -91,7 +91,7 @@ Track conversation state across turns:
 ## Example Session
 
 ```
-> /qabot
+> /spkt-qabot
 
 QABot session started (persistent mode).
 Ask me anything about your brain.

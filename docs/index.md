@@ -10,7 +10,7 @@ automatically.
 
 ## What can you do with it?
 
-### /learn → /qabot : Self-improving RAG
+### /spkt-learn → /spkt-qabot : Self-improving RAG
 
 Feed articles, notes, or URLs into your brain, then query it with
 natural language. Answers include source citations. Retrieval quality
@@ -18,13 +18,13 @@ improves with every conversation — unhelpful results are automatically
 penalized, helpful ones are boosted.
 
 ```
-You: /learn
+You: /spkt-learn
      Summarize this for my brain: https://arxiv.org/abs/1706.03762
 
 Agent: Added 8 neurons from "Attention Is All You Need".
        6 synapses created, source linked for citation.
 
-You: /qabot
+You: /spkt-qabot
      How does multi-head attention differ from single-head?
 
 Agent: Multi-head attention runs multiple attention functions in parallel...
@@ -32,14 +32,14 @@ Agent: Multi-head attention runs multiple attention functions in parallel...
        - [Attention Is All You Need](https://arxiv.org/abs/1706.03762)
 ```
 
-### /learn → /tutor : AI study partner
+### /spkt-learn → /spkt-tutor : AI study partner
 
 Build a knowledge graph from your study material, then let an AI tutor
 teach, quiz, and coach you. It detects prerequisites, adapts difficulty,
 and gives feedback on mistakes — not just "correct" or "wrong".
 
 ```
-You: /learn
+You: /spkt-learn
      I'm studying category theory. Key concepts:
      - Functor: maps between categories preserving structure
      - Natural Transformation: morphism between functors
@@ -47,7 +47,7 @@ You: /learn
 
 Agent: Added 3 neurons, 2 synapses (Monad/NatTrans --requires--> Functor).
 
-You: /tutor
+You: /spkt-tutor
 
 Tutor: Let's start with Functor — it's a prerequisite for the other two.
        [teaches, quizzes, gives feedback, re-explains weak areas]
@@ -69,16 +69,16 @@ Tutor: Let's start with Functor — it's a prerequisite for the other two.
 pip install spikuit
 
 # Initialize a brain (interactive wizard)
-# Configures embeddings and installs Agent CLI skills (/tutor, /learn, /qabot)
+# Configures embeddings and installs Agent CLI skills (/spkt-tutor, /spkt-learn, /spkt-qabot)
 spkt init
 ```
 
 Then, from your Agent CLI (Claude Code, Cursor, Codex):
 
 ```
-/learn    → Add knowledge from conversation, notes, or URLs
-/qabot    → Ask questions — get cited answers from your knowledge graph
-/tutor    → Study with an AI tutor that adapts to your level
+/spkt-learn    → Add knowledge from conversation, notes, or URLs
+/spkt-qabot    → Ask questions — get cited answers from your knowledge graph
+/spkt-tutor    → Study with an AI tutor that adapts to your level
 ```
 
 Or use `spkt` commands directly:
