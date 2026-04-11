@@ -1,6 +1,6 @@
 [project]
 name = "spikuit"
-version = "0.5.1"
+version = "0.5.2"
 description = "A knowledge base that gets smarter the more you use it"
 readme = "README.md"
 license = "Apache-2.0"
@@ -37,6 +37,7 @@ Homepage = "https://takyone.github.io/spikuit/"
 Documentation = "https://takyone.github.io/spikuit/"
 Repository = "https://github.com/takyone/spikuit"
 Issues = "https://github.com/takyone/spikuit/issues"
+"LLMs (llms.txt)" = "https://takyone.github.io/spikuit/llms.txt"
 
 [project.scripts]
 spkt = "spikuit_cli.main:main"
