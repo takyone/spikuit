@@ -265,4 +265,4 @@ The core engine is **LLM-independent** — all `spkt` commands work without
 an LLM. Sessions and agent skills add LLM-powered interactions on top.
 
 For algorithm details (FSRS, graph propagation, scoring formulas, embedding
-pipeline), see [Appendix: Algorithms](appendix.md).
+pipeline), see [Appendix: Algorithms](appendix/index.md).

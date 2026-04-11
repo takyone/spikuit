@@ -82,7 +82,13 @@ plugins:
             Config: 設定
             Propagation: 伝播
             How to Use: 使い方
-            Appendix: 付録
+            Appendix: Appendix
+            Computational Neuroscience: 計算神経科学
+            Cognitive & Developmental Psychology: 認知・発達心理学
+            Spaced Repetition Systems: 間隔反復システム
+            Knowledge Graphs & Graph-Based ML: ナレッジグラフとグラフベースML
+            Information Retrieval & RAG: 情報検索とRAG
+            Implementation Details: 実装詳細
             Data: データ
             Engine: エンジン
             Learning: 学習
@@ -107,7 +113,14 @@ nav:
   - How to Use: how-to-use.md
   - Concepts: concepts.md
   - CLI Reference: cli.md
-  - Appendix: appendix.md
+  - Appendix:
+    - appendix/index.md
+    - Computational Neuroscience: appendix/neuroscience.md
+    - Cognitive & Developmental Psychology: appendix/psychology.md
+    - Spaced Repetition Systems: appendix/spaced-repetition.md
+    - Knowledge Graphs & Graph-Based ML: appendix/graph.md
+    - Information Retrieval & RAG: appendix/retrieval.md
+    - Implementation Details: appendix/implementation.md
   - API Reference:
     - reference/index.md
     - Data:

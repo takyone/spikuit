@@ -176,7 +176,7 @@ Curator: "math"ドメインが代数と解析で2つに割れています。
 - [使い方](how-to-use.ja.md) — ユースケース、エージェントスキル、Python API
 - [コンセプト](concepts.ja.md) — Brain、グラフモデル、つながりの仕組み
 - [CLIリファレンス](cli.ja.md) — 全`spkt`コマンド
-- [付録](appendix.ja.md) — アルゴリズムと技術的詳細
+- [Appendix](appendix/index.md) — アルゴリズムと技術的詳細
 - [APIリファレンス](reference/index.md) — Python APIドキュメント
 
 ## ライセンス

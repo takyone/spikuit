@@ -103,7 +103,7 @@ spkt visualize
 - [How to Use](how-to-use.md) — use cases, agent skills, Python API
 - [Concepts](concepts.md) — brain, graph model, how things connect
 - [CLI Reference](cli.md) — all `spkt` commands
-- [Appendix](appendix.md) — algorithms and technical details
+- [Appendix](appendix/index.md) — algorithms and technical details
 - [API Reference](reference/index.md) — Python API documentation
 
 ## License

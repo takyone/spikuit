@@ -1,6 +1,6 @@
 [project]
 name = "spikuit"
-version = "0.5.0"
+version = "0.5.1"
 description = "A knowledge base that gets smarter the more you use it"
 readme = "README.md"
 license = "Apache-2.0"
@@ -33,7 +33,7 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/takyone/spikuit"
+Homepage = "https://takyone.github.io/spikuit/"
 Documentation = "https://takyone.github.io/spikuit/"
 Repository = "https://github.com/takyone/spikuit"
 Issues = "https://github.com/takyone/spikuit/issues"
