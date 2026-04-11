@@ -9,8 +9,22 @@ from __future__ import annotations
 
 import struct
 from abc import ABC, abstractmethod
+from enum import Enum
 
 import httpx
+
+
+class EmbeddingType(str, Enum):
+    """Indicates whether text is being embedded as a document or a query.
+
+    Some embedding models (Nomic, Cohere, etc.) produce better retrieval
+    results when the input is prefixed with a task-type hint. The
+    ``Embedder.apply_prefix`` method uses this enum to select the
+    correct prefix for the provider.
+    """
+
+    DOCUMENT = "document"
+    QUERY = "query"
 
 
 class Embedder(ABC):
@@ -54,6 +68,22 @@ class Embedder(ABC):
         """
         return [await self.embed(t) for t in texts]
 
+    def apply_prefix(self, text: str, embedding_type: EmbeddingType) -> str:
+        """Prepend a task-type prefix appropriate for this provider.
+
+        The default implementation is a no-op. Subclasses whose models
+        benefit from task-type prefixes (e.g. Nomic, Cohere) should
+        override this or accept a ``prefix_style`` at construction time.
+
+        Args:
+            text: Raw text to embed.
+            embedding_type: Whether the text is a stored document or a query.
+
+        Returns:
+            Text with the appropriate prefix prepended (or unchanged).
+        """
+        return text
+
 
 class OpenAICompatEmbedder(Embedder):
     """Embedder using any OpenAI-compatible ``/v1/embeddings`` endpoint.
@@ -67,6 +97,7 @@ class OpenAICompatEmbedder(Embedder):
             base_url="http://localhost:1234/v1",
             model="text-embedding-nomic-embed-text-v1.5",
             dimension=768,
+            prefix_style="nomic",
         )
         vec = await embedder.embed("hello world")
         ```
@@ -77,7 +108,16 @@ class OpenAICompatEmbedder(Embedder):
         dimension: Expected embedding dimension.
         api_key: Bearer token (default ``"not-needed"`` for local servers).
         timeout: HTTP request timeout in seconds.
+        prefix_style: Task-type prefix style.
+            ``"nomic"`` → ``search_document: `` / ``search_query: ``.
+            ``"cohere"`` → ``search_document: `` / ``search_query: ``.
+            ``"none"`` (default) → no prefix.
     """
+
+    PREFIX_MAP: dict[str, dict[str, str]] = {
+        "nomic": {"document": "search_document: ", "query": "search_query: "},
+        "cohere": {"document": "search_document: ", "query": "search_query: "},
+    }
 
     def __init__(
         self,
@@ -87,12 +127,20 @@ class OpenAICompatEmbedder(Embedder):
         dimension: int = 768,
         api_key: str = "not-needed",
         timeout: float = 30.0,
+        prefix_style: str = "none",
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._model = model
         self._dimension = dimension
         self._api_key = api_key
         self._timeout = timeout
+        self._prefix_style = prefix_style
+
+    def apply_prefix(self, text: str, embedding_type: EmbeddingType) -> str:
+        prefixes = self.PREFIX_MAP.get(self._prefix_style)
+        if prefixes is None:
+            return text
+        return prefixes[embedding_type.value] + text
 
     @property
     def dimension(self) -> int:
@@ -128,6 +176,7 @@ class OllamaEmbedder(Embedder):
             base_url="http://localhost:11434",
             model="nomic-embed-text",
             dimension=768,
+            prefix_style="nomic",
         )
         ```
 
@@ -136,7 +185,10 @@ class OllamaEmbedder(Embedder):
         model: Model name as shown in ``ollama list``.
         dimension: Expected embedding dimension.
         timeout: HTTP request timeout in seconds.
+        prefix_style: Task-type prefix style (same as ``OpenAICompatEmbedder``).
     """
+
+    PREFIX_MAP: dict[str, dict[str, str]] = OpenAICompatEmbedder.PREFIX_MAP
 
     def __init__(
         self,
@@ -145,11 +197,19 @@ class OllamaEmbedder(Embedder):
         model: str = "nomic-embed-text",
         dimension: int = 768,
         timeout: float = 30.0,
+        prefix_style: str = "none",
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._model = model
         self._dimension = dimension
         self._timeout = timeout
+        self._prefix_style = prefix_style
+
+    def apply_prefix(self, text: str, embedding_type: EmbeddingType) -> str:
+        prefixes = self.PREFIX_MAP.get(self._prefix_style)
+        if prefixes is None:
+            return text
+        return prefixes[embedding_type.value] + text
 
     @property
     def dimension(self) -> int:
@@ -204,6 +264,7 @@ def create_embedder(
     dimension: int = 768,
     api_key: str = "not-needed",
     timeout: float = 30.0,
+    prefix_style: str = "none",
 ) -> Embedder | None:
     """Factory: create an Embedder from config values.
 
@@ -214,6 +275,8 @@ def create_embedder(
         dimension: Embedding dimension.
         api_key: Bearer token (OpenAI-compat only).
         timeout: HTTP timeout in seconds.
+        prefix_style: Task-type prefix style (``"nomic"``, ``"cohere"``,
+            or ``"none"``).
 
     Returns:
         An Embedder instance, or ``None`` if provider is ``"none"``.
@@ -230,6 +293,7 @@ def create_embedder(
             dimension=dimension,
             api_key=api_key,
             timeout=timeout,
+            prefix_style=prefix_style,
         )
     if provider == "ollama":
         return OllamaEmbedder(
@@ -237,6 +301,7 @@ def create_embedder(
             model=model or "nomic-embed-text",
             dimension=dimension,
             timeout=timeout,
+            prefix_style=prefix_style,
         )
     raise ValueError(f"Unknown embedder provider: {provider!r}")
 

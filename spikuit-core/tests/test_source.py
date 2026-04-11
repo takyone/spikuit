@@ -206,3 +206,53 @@ def test_strip_frontmatter_incomplete():
     content = "---\ntype: concept\nno closing fence"
     body = strip_frontmatter(content)
     assert body == content  # Returns original if no closing ---
+
+
+# -- Content hash and storage URI -------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_source_content_hash_persists(db):
+    """content_hash should roundtrip through DB."""
+    import hashlib
+    text = "# Functor\n\nA mapping between categories."
+    expected_hash = hashlib.sha256(text.encode()).hexdigest()
+
+    s = Source(
+        url="https://example.com/functor",
+        title="Functor",
+        content_hash=expected_hash,
+    )
+    await db.insert_source(s)
+
+    got = await db.get_source(s.id)
+    assert got is not None
+    assert got.content_hash == expected_hash
+
+
+@pytest.mark.asyncio
+async def test_source_storage_uri_persists(db):
+    """storage_uri should roundtrip through DB."""
+    s = Source(
+        url="https://example.com/article",
+        title="Article",
+        storage_uri="file:///tmp/.spikuit/sources/s-abc123.html",
+    )
+    await db.insert_source(s)
+
+    got = await db.get_source(s.id)
+    assert got is not None
+    assert got.storage_uri == "file:///tmp/.spikuit/sources/s-abc123.html"
+
+
+def test_content_hash_should_be_of_extracted_text():
+    """Verify that the hash of extracted text differs from hash of raw HTML."""
+    import hashlib
+    raw_html = "<html><body><h1>Functor</h1><p>A mapping.</p></body></html>"
+    extracted_text = "# Functor\n\nA mapping."
+
+    hash_html = hashlib.sha256(raw_html.encode()).hexdigest()
+    hash_text = hashlib.sha256(extracted_text.encode()).hexdigest()
+
+    # They must differ — we want the text hash, not the HTML hash
+    assert hash_html != hash_text

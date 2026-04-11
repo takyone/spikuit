@@ -26,17 +26,25 @@ name = "{name}"
 # openai-compat works with LM Studio, Ollama /v1, vLLM, OpenAI, etc.
 provider = "none"
 
+# Task-type prefix style for embedding models.
+# "nomic"  → "search_document: " / "search_query: "
+# "cohere" → "search_document: " / "search_query: "
+# "none"   → no prefix (default)
+# prefix_style = "none"
+
 # Uncomment and configure for local embeddings (LM Studio):
 # provider = "openai-compat"
 # base_url = "http://localhost:1234/v1"
 # model = "text-embedding-nomic-embed-text-v1.5"
 # dimension = 768
+# prefix_style = "nomic"
 
 # Uncomment for Ollama native API:
 # provider = "ollama"
 # base_url = "http://localhost:11434"
 # model = "nomic-embed-text"
 # dimension = 768
+# prefix_style = "nomic"
 """
 
 
@@ -59,6 +67,7 @@ class EmbedderConfig:
     dimension: int = 768
     api_key: str = "not-needed"
     timeout: float = 30.0
+    prefix_style: str = "none"
 
 
 @dataclass
@@ -151,6 +160,7 @@ def init_brain(
     embedder_base_url: str = "",
     embedder_model: str = "",
     embedder_dimension: int = 768,
+    embedder_prefix_style: str = "none",
 ) -> BrainConfig:
     """Initialize a new ``.spikuit/`` directory with ``config.toml``.
 
@@ -190,7 +200,7 @@ def init_brain(
     if embedder_provider != "none":
         config_content = _build_config(
             brain_name, embedder_provider, embedder_base_url,
-            embedder_model, embedder_dimension,
+            embedder_model, embedder_dimension, embedder_prefix_style,
         )
 
     (spikuit_dir / CONFIG_FILE).write_text(config_content)
@@ -213,6 +223,7 @@ def _apply_config(config: BrainConfig, data: dict[str, Any]) -> None:
             dimension=emb.get("dimension", 768),
             api_key=emb.get("api_key", "not-needed"),
             timeout=emb.get("timeout", 30.0),
+            prefix_style=emb.get("prefix_style", "none"),
         )
 
 
@@ -222,6 +233,7 @@ def _build_config(
     base_url: str,
     model: str,
     dimension: int,
+    prefix_style: str = "none",
 ) -> str:
     """Build a config.toml string with active embedder settings."""
     lines = [
@@ -236,4 +248,6 @@ def _build_config(
     if model:
         lines.append(f'model = "{model}"')
     lines.append(f'dimension = {dimension}')
+    if prefix_style != "none":
+        lines.append(f'prefix_style = "{prefix_style}"')
     return "\n".join(lines) + "\n"

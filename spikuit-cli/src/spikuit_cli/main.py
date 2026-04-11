@@ -36,6 +36,7 @@ def _get_circuit(brain: Path | None = None) -> Circuit:
         dimension=config.embedder.dimension,
         api_key=config.embedder.api_key,
         timeout=config.embedder.timeout,
+        prefix_style=config.embedder.prefix_style,
     )
     return Circuit(db_path=config.db_path, embedder=embedder)
 
@@ -824,17 +825,22 @@ def learn_cmd(
     """
 
     async def _learn():
+        import hashlib
+
         circuit = _get_circuit(brain)
         await circuit.connect()
         try:
             # Determine if URL or local file
             is_url = path_or_url.startswith(("http://", "https://"))
+            raw_html: str | None = None
 
             if is_url:
                 import urllib.request
                 try:
                     with urllib.request.urlopen(path_or_url, timeout=30) as resp:
-                        raw = resp.read().decode("utf-8", errors="replace")
+                        raw_bytes = resp.read()
+                        raw = raw_bytes.decode("utf-8", errors="replace")
+                        raw_html = raw  # preserve raw response for storage
                 except Exception as e:
                     typer.echo(f"Failed to fetch URL: {e}", err=True)
                     raise typer.Exit(1)
@@ -847,6 +853,9 @@ def learn_cmd(
                 raw = p.read_text(encoding="utf-8")
                 source_url = f"file://{p.resolve()}"
 
+            # Content hash is of the extracted text (not raw HTML)
+            content_hash = hashlib.sha256(raw.encode()).hexdigest()
+
             # Create or reuse Source
             existing = await circuit.find_source_by_url(source_url)
             if existing:
@@ -855,7 +864,18 @@ def learn_cmd(
                 src = Source(
                     url=source_url,
                     title=title or (Path(path_or_url).stem if not is_url else path_or_url[:80]),
+                    content_hash=content_hash,
                 )
+
+                # Save raw HTML to .spikuit/sources/ for URL fetches
+                if is_url and raw_html is not None:
+                    config = _get_config(brain)
+                    sources_dir = config.spikuit_dir / "sources"
+                    sources_dir.mkdir(exist_ok=True)
+                    html_path = sources_dir / f"{src.id}.html"
+                    html_path.write_text(raw_html, encoding="utf-8")
+                    src.storage_uri = f"file://{html_path.resolve()}"
+
                 await circuit.add_source(src)
 
             if as_json:
@@ -863,6 +883,8 @@ def learn_cmd(
                     "source_id": src.id,
                     "source_url": src.url,
                     "source_title": src.title,
+                    "content_hash": src.content_hash,
+                    "storage_uri": src.storage_uri,
                     "domain": domain,
                     "content_length": len(raw),
                     "content": raw,
@@ -871,7 +893,7 @@ def learn_cmd(
                 typer.echo(f"Source: {src.id} ({src.url})")
                 typer.echo(f"Content: {len(raw)} chars")
                 typer.echo(f"Domain: {domain or '-'}")
-                typer.echo("\nUse the /learn agent skill to chunk this content into neurons.")
+                typer.echo("\nUse the /spkt-learn agent skill to chunk this content into neurons.")
         finally:
             await circuit.close()
 

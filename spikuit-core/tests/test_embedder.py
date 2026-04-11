@@ -6,7 +6,7 @@ import pytest
 import pytest_asyncio
 
 from spikuit_core import Circuit, Neuron, NullEmbedder
-from spikuit_core.embedder import Embedder, vec_to_blob, blob_to_vec
+from spikuit_core.embedder import Embedder, EmbeddingType, OpenAICompatEmbedder, OllamaEmbedder, vec_to_blob, blob_to_vec
 
 
 # ---------------------------------------------------------------------------
@@ -284,3 +284,287 @@ async def test_knn_distance_ordering(circuit_with_embedder):
     # "close" should be nearer than "far"
     ids = [nid for nid, _ in results]
     assert ids.index("close") < ids.index("far")
+
+
+# ---------------------------------------------------------------------------
+# EmbeddingType + apply_prefix
+# ---------------------------------------------------------------------------
+
+
+def test_base_embedder_apply_prefix_is_noop():
+    """Base Embedder.apply_prefix returns text unchanged."""
+    emb = NullEmbedder()
+    assert emb.apply_prefix("hello", EmbeddingType.DOCUMENT) == "hello"
+    assert emb.apply_prefix("hello", EmbeddingType.QUERY) == "hello"
+
+
+def test_fake_embedder_apply_prefix_is_noop():
+    """FakeEmbedder inherits no-op apply_prefix."""
+    emb = FakeEmbedder()
+    assert emb.apply_prefix("hello", EmbeddingType.DOCUMENT) == "hello"
+
+
+def test_openai_compat_prefix_nomic():
+    """OpenAICompatEmbedder with nomic prefix_style prepends correctly."""
+    emb = OpenAICompatEmbedder(prefix_style="nomic")
+    assert emb.apply_prefix("hello", EmbeddingType.DOCUMENT) == "search_document: hello"
+    assert emb.apply_prefix("hello", EmbeddingType.QUERY) == "search_query: hello"
+
+
+def test_openai_compat_prefix_cohere():
+    """OpenAICompatEmbedder with cohere prefix_style prepends correctly."""
+    emb = OpenAICompatEmbedder(prefix_style="cohere")
+    assert emb.apply_prefix("hello", EmbeddingType.DOCUMENT) == "search_document: hello"
+    assert emb.apply_prefix("hello", EmbeddingType.QUERY) == "search_query: hello"
+
+
+def test_openai_compat_prefix_none():
+    """OpenAICompatEmbedder with prefix_style='none' returns text unchanged."""
+    emb = OpenAICompatEmbedder(prefix_style="none")
+    assert emb.apply_prefix("hello", EmbeddingType.DOCUMENT) == "hello"
+    assert emb.apply_prefix("hello", EmbeddingType.QUERY) == "hello"
+
+
+def test_openai_compat_prefix_default_is_none():
+    """Default prefix_style is 'none' (no prefix)."""
+    emb = OpenAICompatEmbedder()
+    assert emb.apply_prefix("hello", EmbeddingType.DOCUMENT) == "hello"
+
+
+def test_ollama_prefix_nomic():
+    """OllamaEmbedder with nomic prefix_style prepends correctly."""
+    emb = OllamaEmbedder(prefix_style="nomic")
+    assert emb.apply_prefix("hello", EmbeddingType.DOCUMENT) == "search_document: hello"
+    assert emb.apply_prefix("hello", EmbeddingType.QUERY) == "search_query: hello"
+
+
+def test_ollama_prefix_none():
+    """OllamaEmbedder with prefix_style='none' returns text unchanged."""
+    emb = OllamaEmbedder(prefix_style="none")
+    assert emb.apply_prefix("hello", EmbeddingType.DOCUMENT) == "hello"
+
+
+# ---------------------------------------------------------------------------
+# Frontmatter stripping in Circuit embedding pipeline
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_add_neuron_strips_frontmatter_before_embedding(tmp_path):
+    """Frontmatter should NOT be included in the embedding vector."""
+
+    captured_texts: list[str] = []
+
+    class CapturingEmbedder(Embedder):
+        """Records the text passed to embed() for inspection."""
+
+        @property
+        def dimension(self) -> int:
+            return 4
+
+        async def embed(self, text: str) -> list[float]:
+            captured_texts.append(text)
+            return [0.0] * 4
+
+    emb = CapturingEmbedder()
+    c = Circuit(db_path=tmp_path / "test.db", embedder=emb)
+    await c.connect()
+
+    content = "---\ntype: concept\ndomain: math\n---\n# Functor\n\nA mapping between categories."
+    n = Neuron.create(content, id="n1")
+    await c.add_neuron(n)
+
+    await c.close()
+
+    # The embedded text should be the body, not the frontmatter
+    assert len(captured_texts) == 1
+    assert "type: concept" not in captured_texts[0]
+    assert "domain: math" not in captured_texts[0]
+    assert "Functor" in captured_texts[0]
+
+
+@pytest.mark.asyncio
+async def test_embed_all_strips_frontmatter(tmp_path):
+    """embed_all() should strip frontmatter before embedding."""
+
+    captured_texts: list[str] = []
+
+    class CapturingEmbedder(Embedder):
+        @property
+        def dimension(self) -> int:
+            return 4
+
+        async def embed(self, text: str) -> list[float]:
+            captured_texts.append(text)
+            return [0.0] * 4
+
+    # Create circuit without embedder first
+    c1 = Circuit(db_path=tmp_path / "test.db")
+    await c1.connect()
+    content = "---\nsection: chapter1\n---\n# Monad\n\nA monoid in the category of endofunctors."
+    await c1.add_neuron(Neuron.create(content, id="n1"))
+    await c1.close()
+
+    # Reopen with capturing embedder and backfill
+    emb = CapturingEmbedder()
+    c2 = Circuit(db_path=tmp_path / "test.db", embedder=emb)
+    await c2.connect()
+    count = await c2.embed_all()
+    await c2.close()
+
+    assert count == 1
+    assert "section: chapter1" not in captured_texts[0]
+    assert "Monad" in captured_texts[0]
+
+
+@pytest.mark.asyncio
+async def test_retrieve_uses_query_prefix(tmp_path):
+    """retrieve() should apply EmbeddingType.QUERY prefix to the query."""
+
+    captured_texts: list[str] = []
+
+    class CapturingPrefixEmbedder(Embedder):
+        @property
+        def dimension(self) -> int:
+            return 4
+
+        async def embed(self, text: str) -> list[float]:
+            captured_texts.append(text)
+            return [0.0] * 4
+
+        def apply_prefix(self, text: str, embedding_type: EmbeddingType) -> str:
+            if embedding_type == EmbeddingType.QUERY:
+                return "search_query: " + text
+            return "search_document: " + text
+
+    emb = CapturingPrefixEmbedder()
+    c = Circuit(db_path=tmp_path / "test.db", embedder=emb)
+    await c.connect()
+
+    await c.add_neuron(Neuron.create("# Test\n\nSome content.", id="n1"))
+    captured_texts.clear()  # Clear the add_neuron embed call
+
+    await c.retrieve("my query")
+    await c.close()
+
+    # The retrieve call should have used QUERY prefix
+    assert any("search_query: my query" == t for t in captured_texts)
+
+
+@pytest.mark.asyncio
+async def test_add_neuron_uses_document_prefix(tmp_path):
+    """add_neuron() should apply EmbeddingType.DOCUMENT prefix."""
+
+    captured_texts: list[str] = []
+
+    class CapturingPrefixEmbedder(Embedder):
+        @property
+        def dimension(self) -> int:
+            return 4
+
+        async def embed(self, text: str) -> list[float]:
+            captured_texts.append(text)
+            return [0.0] * 4
+
+        def apply_prefix(self, text: str, embedding_type: EmbeddingType) -> str:
+            if embedding_type == EmbeddingType.DOCUMENT:
+                return "search_document: " + text
+            return "search_query: " + text
+
+    emb = CapturingPrefixEmbedder()
+    c = Circuit(db_path=tmp_path / "test.db", embedder=emb)
+    await c.connect()
+
+    await c.add_neuron(Neuron.create("# Functor\n\nA mapping.", id="n1"))
+    await c.close()
+
+    assert len(captured_texts) == 1
+    assert captured_texts[0].startswith("search_document: ")
+
+
+# ---------------------------------------------------------------------------
+# Section context inlining
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_section_inlined_in_embedding(tmp_path):
+    """Frontmatter 'section' should be prepended as [Section: X] in embedding text."""
+
+    captured_texts: list[str] = []
+
+    class CapturingEmbedder(Embedder):
+        @property
+        def dimension(self) -> int:
+            return 4
+
+        async def embed(self, text: str) -> list[float]:
+            captured_texts.append(text)
+            return [0.0] * 4
+
+    emb = CapturingEmbedder()
+    c = Circuit(db_path=tmp_path / "test.db", embedder=emb)
+    await c.connect()
+
+    content = "---\nsection: Chapter 3 - Monads\n---\n# Monad\n\nA monoid in endofunctors."
+    await c.add_neuron(Neuron.create(content, id="n1"))
+    await c.close()
+
+    assert len(captured_texts) == 1
+    assert captured_texts[0].startswith("[Section: Chapter 3 - Monads] ")
+    assert "Monad" in captured_texts[0]
+    assert "section:" not in captured_texts[0]  # raw frontmatter stripped
+
+
+@pytest.mark.asyncio
+async def test_no_section_no_prefix(tmp_path):
+    """Without 'section' in frontmatter, no [Section: ...] prefix is added."""
+
+    captured_texts: list[str] = []
+
+    class CapturingEmbedder(Embedder):
+        @property
+        def dimension(self) -> int:
+            return 4
+
+        async def embed(self, text: str) -> list[float]:
+            captured_texts.append(text)
+            return [0.0] * 4
+
+    emb = CapturingEmbedder()
+    c = Circuit(db_path=tmp_path / "test.db", embedder=emb)
+    await c.connect()
+
+    content = "---\ntype: concept\n---\n# Functor\n\nA mapping."
+    await c.add_neuron(Neuron.create(content, id="n1"))
+    await c.close()
+
+    assert len(captured_texts) == 1
+    assert not captured_texts[0].startswith("[Section:")
+    assert captured_texts[0].startswith("# Functor")
+
+
+@pytest.mark.asyncio
+async def test_no_frontmatter_no_prefix(tmp_path):
+    """Content without frontmatter should be embedded as-is."""
+
+    captured_texts: list[str] = []
+
+    class CapturingEmbedder(Embedder):
+        @property
+        def dimension(self) -> int:
+            return 4
+
+        async def embed(self, text: str) -> list[float]:
+            captured_texts.append(text)
+            return [0.0] * 4
+
+    emb = CapturingEmbedder()
+    c = Circuit(db_path=tmp_path / "test.db", embedder=emb)
+    await c.connect()
+
+    await c.add_neuron(Neuron.create("# Plain\n\nNo frontmatter here.", id="n1"))
+    await c.close()
+
+    assert len(captured_texts) == 1
+    assert captured_texts[0] == "# Plain\n\nNo frontmatter here."

@@ -4,7 +4,7 @@ __version__ = "0.3.0"
 
 from .circuit import Circuit
 from .config import BrainConfig, find_spikuit_root, init_brain, load_config
-from .embedder import Embedder, NullEmbedder, OllamaEmbedder, OpenAICompatEmbedder, create_embedder
+from .embedder import Embedder, EmbeddingType, NullEmbedder, OllamaEmbedder, OpenAICompatEmbedder, create_embedder
 from .models import (
     ExamResult,
     Grade,
@@ -51,6 +51,7 @@ __all__ = [
     "TutorState",
     "compute_scaffold",
     "Embedder",
+    "EmbeddingType",
     "Flashcard",
     "Learn",
     "LearnSession",

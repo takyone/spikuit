@@ -14,7 +14,7 @@ import networkx as nx
 from fsrs import Card, Rating, Scheduler
 
 from .db import DEFAULT_DB_PATH, Database
-from .embedder import Embedder, vec_to_blob
+from .embedder import Embedder, EmbeddingType, vec_to_blob
 from .models import Grade, Neuron, Plasticity, QuizItem, QuizItemRole, ScaffoldLevel, Source, Spike, Synapse, SynapseType
 from .propagation import compute_propagation, compute_stdp, decay_all_pressure
 
@@ -117,6 +117,30 @@ class Circuit:
             if nid in self._graph:
                 self._graph.nodes[nid]["retrieval_boost"] = boost
 
+    # -- Embedding helpers --------------------------------------------------
+
+    def _prepare_embed_text(self, neuron: Neuron) -> str:
+        """Build the text to embed for a neuron.
+
+        Strips YAML frontmatter and prepends contextual prefixes that
+        improve retrieval quality:
+
+        - ``[Section: X]`` from frontmatter ``section`` field
+        - (future) searchable source metadata
+        """
+        from .models import _parse_frontmatter, strip_frontmatter
+
+        fm = _parse_frontmatter(neuron.content)
+        body = strip_frontmatter(neuron.content)
+
+        prefix_parts: list[str] = []
+        if fm.get("section"):
+            prefix_parts.append(f"[Section: {fm['section']}]")
+
+        if prefix_parts:
+            return " ".join(prefix_parts) + " " + body
+        return body
+
     # -- Neuron operations --------------------------------------------------
 
     async def add_neuron(self, neuron: Neuron) -> Neuron:
@@ -141,7 +165,10 @@ class Circuit:
 
         # Auto-embed if embedder is available
         if self._embedder is not None:
-            vec = await self._embedder.embed(neuron.content)
+            text = self._embedder.apply_prefix(
+                self._prepare_embed_text(neuron), EmbeddingType.DOCUMENT,
+            )
+            vec = await self._embedder.embed(text)
             await self._db.upsert_embedding(neuron.id, vec_to_blob(vec))
 
         return neuron
@@ -159,7 +186,10 @@ class Circuit:
             self._graph.nodes[neuron.id]["domain"] = neuron.domain
         # Re-embed on content change
         if self._embedder is not None:
-            vec = await self._embedder.embed(neuron.content)
+            text = self._embedder.apply_prefix(
+                self._prepare_embed_text(neuron), EmbeddingType.DOCUMENT,
+            )
+            vec = await self._embedder.embed(text)
             await self._db.upsert_embedding(neuron.id, vec_to_blob(vec))
 
     async def remove_neuron(self, neuron_id: str) -> None:
@@ -474,7 +504,8 @@ class Circuit:
         # Semantic similarity via embeddings (if available)
         semantic_scores: dict[str, float] = {}
         if self._embedder is not None and self._db.has_embeddings:
-            query_vec = await self._embedder.embed(query)
+            query_text = self._embedder.apply_prefix(query, EmbeddingType.QUERY)
+            query_vec = await self._embedder.embed(query_text)
             query_blob = vec_to_blob(query_vec)
             # Fetch more candidates than limit to allow re-ranking
             knn_results = await self._db.knn_search(query_blob, limit=limit * 3)
@@ -631,7 +662,12 @@ class Circuit:
         count = 0
         for i in range(0, len(to_embed), batch_size):
             batch = to_embed[i : i + batch_size]
-            texts = [n.content for n in batch]
+            texts = [
+                self._embedder.apply_prefix(
+                    self._prepare_embed_text(n), EmbeddingType.DOCUMENT,
+                )
+                for n in batch
+            ]
             vecs = await self._embedder.embed_batch(texts)
             for n, vec in zip(batch, vecs):
                 await self._db.upsert_embedding(n.id, vec_to_blob(vec))
