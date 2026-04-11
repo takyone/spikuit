@@ -1,4 +1,4 @@
-# /spkt-learn — Knowledge Curation Session
+# /spkt-teach — Knowledge Curation Session
 
 Ingest new knowledge, discover connections, and curate the graph.
 
@@ -104,7 +104,7 @@ highlights), process them in a batch:
 ## Example Session
 
 ```
-> /spkt-learn
+> /spkt-teach
 
 What would you like to add to your brain?
 

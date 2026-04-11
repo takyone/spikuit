@@ -18,13 +18,13 @@ as you talk to it.
 
 ## Three skills, one loop
 
-### `/spkt-learn` — Talk it in.
+### `/spkt-teach` — Talk it in.
 
 Feed articles, notes, or URLs into your Brain. The agent chunks content,
 discovers relations, and builds your knowledge graph — you just talk.
 
 ```
-You: /spkt-learn
+You: /spkt-teach
      Summarize this for my brain: https://arxiv.org/abs/1706.03762
 
 Agent: Added 8 neurons from "Attention Is All You Need".
@@ -81,7 +81,7 @@ spkt init
 Then, from your Agent CLI (Claude Code, Cursor, Codex):
 
 ```
-/spkt-learn    → Talk it in. Curate knowledge through conversation.
+/spkt-teach    → Talk it in. Curate knowledge through conversation.
 /spkt-qabot    → Ask it back. Get cited answers from your knowledge graph.
 /spkt-tutor    → Let it teach you. Study with an AI that adapts to your level.
 ```

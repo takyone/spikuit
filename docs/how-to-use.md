@@ -235,7 +235,7 @@ Tutor: [FEEDBACK] Exactly! `map` is specialized to lists, while `fmap`
 | Q&A | You ask a question | Pedagogical answer using your brain's knowledge |
 | Drill | Persistent weakness | Focused repetition with varied question angles |
 
-### `/spkt-learn` — Knowledge Curation
+### `/spkt-teach` — Knowledge Curation
 
 Add knowledge through conversation. The agent structures your input,
 discovers related concepts, and creates connections.
@@ -243,7 +243,7 @@ discovers related concepts, and creates connections.
 **Example session:**
 
 ```
-> /spkt-learn
+> /spkt-teach
 
 What would you like to add?
 

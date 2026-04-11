@@ -71,7 +71,7 @@ spkt skills install -t .cursor/skills  # 他のAgentを使う場合
 **Agent CLIから：**
 
 ```
-You: /spkt-learn
+You: /spkt-teach
      圏論を勉強中。FunctorとMonadの定義をBrainに入れて。
 
 Agent: 2個のNeuronを追加、1本のSynapse（Monad --requires--> Functor）を作成。
@@ -108,13 +108,13 @@ spkt visualize                              # インタラクティブなHTMLグ
 
 ## 3つのスキル + キュレーター
 
-### `/spkt-learn` — 話して取り込む
+### `/spkt-teach` — 話して取り込む
 
 記事でもメモでもURL でも、Brainに投げるだけ。エージェントが中身を分割して
 関連を見つけ出し、グラフを組み立てます。
 
 ```
-You: /spkt-learn
+You: /spkt-teach
      この論文をBrainにまとめて: https://arxiv.org/abs/1706.03762
 
 Agent: 8個のNeuronを追加（Multi-Head Attention, Scaled Dot-Product, ...）。

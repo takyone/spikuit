@@ -1,6 +1,6 @@
 ---
-name: spkt-learn
-description: Add knowledge to your Spikuit brain through conversation. Structures input into neurons, discovers related concepts, creates connections, and detects duplicates. Use when you want to save or organize knowledge.
+name: spkt-teach
+description: Teach knowledge to your Spikuit brain through conversation. Structures input into neurons, discovers related concepts, creates connections, and detects duplicates. Use when you want to save or organize knowledge.
 allowed-tools: Bash(spkt *)
 ---
 

@@ -538,7 +538,7 @@ async def _learn_dir(
             typer.echo(f"  {r['source_id']} \u2014 {r['source_title']} ({r['content_length']} chars)")
         if meta_map:
             typer.echo(f"  metadata.jsonl: {len(meta_map)} entries applied")
-        typer.echo("\nUse the /spkt-learn agent skill to chunk content into neurons.")
+        typer.echo("\nUse the /spkt-teach agent skill to chunk content into neurons.")
 
 
 def _emit_learn_result_from_dict(result: dict) -> None:
@@ -546,7 +546,7 @@ def _emit_learn_result_from_dict(result: dict) -> None:
     typer.echo(f"Source: {result['source_id']} ({result['source_url']})")
     typer.echo(f"Content: {result['content_length']} chars")
     typer.echo(f"Domain: {result.get('domain') or '-'}")
-    typer.echo("\nUse the /spkt-learn agent skill to chunk this content into neurons.")
+    typer.echo("\nUse the /spkt-teach agent skill to chunk this content into neurons.")
 
 
 def _emit_learn_result(src: Source, raw: str, domain: str | None, as_json: bool) -> None:
@@ -566,4 +566,4 @@ def _emit_learn_result(src: Source, raw: str, domain: str | None, as_json: bool)
         typer.echo(f"Source: {src.id} ({src.url})")
         typer.echo(f"Content: {len(raw)} chars")
         typer.echo(f"Domain: {domain or '-'}")
-        typer.echo("\nUse the /spkt-learn agent skill to chunk this content into neurons.")
+        typer.echo("\nUse the /spkt-teach agent skill to chunk this content into neurons.")
