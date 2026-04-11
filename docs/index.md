@@ -21,8 +21,8 @@ penalized, helpful ones are boosted.
 You: /learn
      Summarize this for my brain: https://arxiv.org/abs/1706.03762
 
-Agent: Ingested 8 neurons from "Attention Is All You Need".
-       Connected to existing knowledge. Source attached for citation.
+Agent: Added 8 neurons from "Attention Is All You Need".
+       6 synapses created, source linked for citation.
 
 You: /qabot
      How does multi-head attention differ from single-head?
@@ -45,7 +45,7 @@ You: /learn
      - Natural Transformation: morphism between functors
      - Monad: monoid in the category of endofunctors
 
-Agent: Created 3 neurons. Connected: Monad --requires--> Functor
+Agent: Added 3 neurons, 2 synapses (Monad/NatTrans --requires--> Functor).
 
 You: /tutor
 

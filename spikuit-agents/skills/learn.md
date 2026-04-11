@@ -144,6 +144,27 @@ The skill should discover the brain automatically. If no brain is found
 in the current directory tree, ask the user which brain to use.
 Use `--brain <path>` with all `spkt` commands.
 
+## Output Format
+
+Keep output concise. After ingestion, report a single summary line:
+
+```
+Added N neurons, M synapses. Source linked.
+```
+
+- **Neuron count**: how many created
+- **Synapse count**: how many connections discovered and created
+- **Source**: mention only when attached (URL or file)
+- Do NOT list every neuron ID or synapse individually unless asked
+- For batch ingestion, show summary then offer "Want to see details?"
+
+When confirming before creation:
+```
+Will add 3 neurons (concept/math) with 4 synapses.
+Source: https://example.com/article
+Proceed? [Y/n]
+```
+
 ## Commands Used
 
 ```bash

@@ -223,6 +223,36 @@ Save criteria:
 - Has clear grading criteria
 - The learner explicitly asks to save it, OR it was particularly effective
 
+## Output Format
+
+Keep output natural and conversational.
+
+**Session start** — brief diagnosis:
+```
+You have 5 neurons due. Let's start with PageRank — it's a prerequisite for APPNP.
+```
+
+**After grading** — one-line result + brief explanation:
+```
+fire — Correct. You got the key insight about teleport preventing over-smoothing.
+       Stability: 5.1 → 12.3 days
+```
+
+**Session summary** — compact:
+```
+Session: 4 reviewed, 1 new
+  fire:   PageRank, APPNP
+  weak:   GCN over-smoothing
+  miss:   Spectral Graph Theory
+Next: Review Spectral Graph Theory (prerequisite gap detected)
+```
+
+Rules:
+- Don't announce actions ("Now I will diagnose...") — just do them
+- Grade line is one line; explanation follows only if miss/weak
+- Stability changes on grade line, not separately
+- Keep hints short — one sentence each
+
 ## Session Summary
 
 At session end, show:

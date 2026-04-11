@@ -138,6 +138,23 @@ The skill should discover the brain automatically. If no brain is found
 in the current directory tree, ask the user which brain to use.
 Use `--brain <path>` with all `spkt` commands.
 
+## Output Format
+
+Structure every answer consistently:
+
+```
+[Synthesized answer in the user's language]
+
+Sources:
+- [Title](url) (via n-abc123)
+- n-def456: Neuron title
+```
+
+- **Answer first, sources last** — never lead with retrieval internals
+- **Cite with URL** when Source metadata is available; fall back to neuron ID
+- **No retrieval internals** — don't mention scores, community IDs, or boost mechanics
+- On accept feedback, confirm briefly: `Retrieval boost applied.`
+
 ## Commands Used
 
 ```bash

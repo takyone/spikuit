@@ -45,10 +45,8 @@ with every conversation — no re-indexing needed.
 You: /learn
      Here's an article on attention mechanisms: https://arxiv.org/abs/1706.03762
 
-Agent: I've ingested the paper and created 8 neurons:
-       Multi-Head Attention, Scaled Dot-Product, Positional Encoding, ...
-       Connected 12 synapses to existing knowledge.
-       Source attached for citation.
+Agent: Added 8 neurons (Multi-Head Attention, Scaled Dot-Product, ...).
+       6 synapses created, source linked for citation.
 
 You: /qabot
      How does multi-head attention differ from single-head?
@@ -58,11 +56,10 @@ Agent: Multi-head attention runs multiple attention functions in parallel,
 
        Sources:
        - [Attention Is All You Need](https://arxiv.org/abs/1706.03762) (via n-a1b2c3)
-       - n-d4e5f6: Self-Attention
 
 You: What about computational cost?
 
-Agent: [retrieves new neurons — prior unhelpful results auto-penalized]
+Agent: [prior results auto-penalized, new neurons retrieved]
 ```
 
 ### /learn → /tutor : AI study partner
@@ -77,9 +74,7 @@ You: /learn
      - A Natural Transformation is a morphism between functors
      - A Monad is a monoid in the category of endofunctors
 
-Agent: Created 3 neurons, connected:
-       Monad --requires--> Functor
-       Natural Transformation --requires--> Functor
+Agent: Added 3 neurons, 2 synapses (Monad/NatTrans --requires--> Functor).
 
 You: /tutor
 

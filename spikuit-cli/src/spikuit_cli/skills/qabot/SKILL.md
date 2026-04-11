@@ -54,6 +54,26 @@ For each retrieved neuron, also check its neighbors for richer context:
 - **User says "thanks" / "good"** → results were helpful, note which ones
 - **Topic change** → start fresh context
 
+## Output Format
+
+Structure every answer consistently:
+
+```
+[Synthesized answer in the user's language]
+
+Sources:
+- [Title](url) (via n-abc123)
+- n-def456: Neuron title
+```
+
+Rules:
+- **Answer first, sources last** — never lead with "I found N neurons"
+- **Cite with URL** when Source metadata is available; fall back to neuron ID
+- **No retrieval internals** — don't mention scores, community IDs, or boost mechanics
+- **Acknowledge gaps** briefly: "Your brain doesn't cover X yet." — don't over-explain
+- On accept feedback ("thanks", "good"), confirm briefly: `Retrieval boost applied.`
+- On topic change, no announcement needed — just answer the new question
+
 ## Commands
 
 ```bash

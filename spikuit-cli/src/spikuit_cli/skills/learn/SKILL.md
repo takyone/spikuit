@@ -84,6 +84,31 @@ When multiple items at once:
 4. Discover inter-batch + external relations
 5. Create all synapses
 
+## Output Format
+
+Keep output concise. After ingestion, report a single summary line per operation:
+
+```
+Added N neurons, M synapses. Source linked.
+```
+
+Details:
+- **Neuron count**: how many neurons were created
+- **Synapse count**: how many connections were discovered and created
+- **Source**: mention only when a source was attached (URL or file)
+- **Community re-detection**: mention only if run (`Communities re-detected.`)
+
+Do NOT list every neuron ID or synapse individually unless the user asks.
+For batch ingestion, show the summary, then offer "Want to see details?" rather than dumping everything.
+
+When confirming with the user before creation, keep it brief:
+
+```
+Will add 3 neurons (concept/math) with 4 synapses.
+Source: https://example.com/article
+Proceed? [Y/n]
+```
+
 ## Commands
 
 ```bash

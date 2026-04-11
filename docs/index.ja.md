@@ -18,8 +18,8 @@ Spikuit（spike + circuit、発音: /spaɪ.kɪt/）は、**検索、復習、質
 You: /learn
      この論文をBrainにまとめて: https://arxiv.org/abs/1706.03762
 
-Agent: 「Attention Is All You Need」から8つのNeuronを作成。
-       既存のナレッジに接続。引用用にSourceを紐付けました。
+Agent: 8 neurons追加（Multi-Head Attention, Scaled Dot-Product, ...）。
+       6 synapses作成、引用用にSource紐付け。
 
 You: /qabot
      Multi-Head Attentionとシングルヘッドの違いは？
@@ -42,7 +42,7 @@ You: /learn
      - 自然変換: Functor間の射
      - Monad: 自己関手の圏におけるモノイド
 
-Agent: 3つのNeuronを作成。接続: Monad --requires--> Functor
+Agent: 3 neurons追加、2 synapses作成（Monad/自然変換 --requires--> Functor）。
 
 You: /tutor
 
