@@ -1,6 +1,6 @@
 [project]
 name = "spikuit-agents"
-version = "0.2.0"
+version = "0.3.0"
 description = "Strands-based agent workflows for Spikuit"
 requires-python = ">=3.11"
 dependencies = [

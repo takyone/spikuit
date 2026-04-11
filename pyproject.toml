@@ -1,6 +1,6 @@
 [project]
 name = "spikuit"
-version = "0.2.0"
+version = "0.3.0"
 description = "A knowledge base that gets smarter the more you use it"
 readme = "README.md"
 license = "Apache-2.0"
