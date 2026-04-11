@@ -3,7 +3,7 @@
 import pytest
 import pytest_asyncio
 
-from spikuit_core import Circuit, Grade, Neuron, Spike, SynapseType
+from spikuit_core import Circuit, Grade, Neuron, Source, Spike, SynapseType
 
 
 @pytest_asyncio.fixture
@@ -246,4 +246,80 @@ async def test_graph_reload(tmp_path):
     assert c2.neuron_count == 2
     assert c2.synapse_count == 1
     assert n2.id in c2.neighbors(n1.id)
+    await c2.close()
+
+
+# -- Source operations on Circuit -------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_circuit_add_and_get_source(circuit):
+    s = Source(url="https://example.com", title="Example")
+    await circuit.add_source(s)
+
+    got = await circuit.get_source(s.id)
+    assert got is not None
+    assert got.url == "https://example.com"
+
+
+@pytest.mark.asyncio
+async def test_circuit_find_source_by_url(circuit):
+    s = Source(url="https://unique.com", title="Unique")
+    await circuit.add_source(s)
+
+    found = await circuit.find_source_by_url("https://unique.com")
+    assert found is not None
+    assert found.id == s.id
+
+    assert await circuit.find_source_by_url("https://nope.com") is None
+
+
+@pytest.mark.asyncio
+async def test_circuit_attach_and_get_sources(circuit):
+    n = Neuron.create("# Test")
+    await circuit.add_neuron(n)
+    s1 = Source(url="https://a.com")
+    s2 = Source(url="https://b.com")
+    await circuit.add_source(s1)
+    await circuit.add_source(s2)
+
+    await circuit.attach_source(n.id, s1.id)
+    await circuit.attach_source(n.id, s2.id)
+
+    sources = await circuit.get_sources_for_neuron(n.id)
+    assert len(sources) == 2
+    assert {s.url for s in sources} == {"https://a.com", "https://b.com"}
+
+
+@pytest.mark.asyncio
+async def test_circuit_detach_source(circuit):
+    n = Neuron.create("# Test")
+    await circuit.add_neuron(n)
+    s = Source(url="https://a.com")
+    await circuit.add_source(s)
+    await circuit.attach_source(n.id, s.id)
+
+    await circuit.detach_source(n.id, s.id)
+    assert await circuit.get_sources_for_neuron(n.id) == []
+
+
+@pytest.mark.asyncio
+async def test_circuit_source_survives_reload(tmp_path):
+    """Source attachments should persist across Circuit reconnections."""
+    db_path = tmp_path / "reload.db"
+
+    c1 = Circuit(db_path=db_path)
+    await c1.connect()
+    n = Neuron.create("# Test")
+    await c1.add_neuron(n)
+    s = Source(url="https://persist.com", title="Persist")
+    await c1.add_source(s)
+    await c1.attach_source(n.id, s.id)
+    await c1.close()
+
+    c2 = Circuit(db_path=db_path)
+    await c2.connect()
+    sources = await c2.get_sources_for_neuron(n.id)
+    assert len(sources) == 1
+    assert sources[0].url == "https://persist.com"
     await c2.close()

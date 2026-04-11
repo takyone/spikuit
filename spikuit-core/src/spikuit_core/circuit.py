@@ -15,7 +15,7 @@ from fsrs import Card, Rating, Scheduler
 
 from .db import DEFAULT_DB_PATH, Database
 from .embedder import Embedder, vec_to_blob
-from .models import Grade, Neuron, Plasticity, QuizItem, QuizItemRole, ScaffoldLevel, Spike, Synapse, SynapseType
+from .models import Grade, Neuron, Plasticity, QuizItem, QuizItemRole, ScaffoldLevel, Source, Spike, Synapse, SynapseType
 from .propagation import compute_propagation, compute_stdp, decay_all_pressure
 
 # Grade → FSRS Rating mapping
@@ -94,6 +94,11 @@ class Circuit:
                 s.pre, s.post,
                 type=s.type.value, weight=s.weight, co_fires=s.co_fires,
             )
+        # Load community IDs into node data
+        community_ids = await self._db.get_community_ids()
+        for nid, cid in community_ids.items():
+            if nid in self._graph:
+                self._graph.nodes[nid]["community_id"] = cid
 
     async def _load_cards(self) -> None:
         """Load FSRS cards from DB into memory cache."""
@@ -617,14 +622,102 @@ class Circuit:
                 count += 1
         return count
 
+    # -- Source operations --------------------------------------------------
+
+    async def add_source(self, source: Source) -> Source:
+        """Add a Source to the circuit.
+
+        Args:
+            source: The source to persist.
+
+        Returns:
+            The same source (pass-through for chaining).
+        """
+        await self._db.insert_source(source)
+        return source
+
+    async def get_source(self, source_id: str) -> Source | None:
+        return await self._db.get_source(source_id)
+
+    async def find_source_by_url(self, url: str) -> Source | None:
+        return await self._db.find_source_by_url(url)
+
+    async def get_sources_for_neuron(self, neuron_id: str) -> list[Source]:
+        return await self._db.get_sources_for_neuron(neuron_id)
+
+    async def attach_source(self, neuron_id: str, source_id: str) -> None:
+        """Link a source to a neuron (idempotent)."""
+        await self._db.attach_source(neuron_id, source_id)
+
+    async def detach_source(self, neuron_id: str, source_id: str) -> None:
+        """Remove the link between a neuron and a source."""
+        await self._db.detach_source(neuron_id, source_id)
+
+    # -- Community detection ------------------------------------------------
+
+    async def detect_communities(
+        self, *, resolution: float = 1.0
+    ) -> dict[int, list[str]]:
+        """Run Louvain community detection and persist results.
+
+        Uses an undirected projection of the graph. Results are stored
+        in the DB and loaded into NetworkX node data.
+
+        Args:
+            resolution: Louvain resolution parameter. Higher values
+                produce more communities.
+
+        Returns:
+            Mapping of community_id → list of neuron IDs.
+        """
+        if self._graph.number_of_nodes() == 0:
+            return {}
+
+        undirected = self._graph.to_undirected()
+        communities = nx.community.louvain_communities(
+            undirected, resolution=resolution, seed=42,
+        )
+
+        result: dict[int, list[str]] = {}
+        mapping: dict[str, int] = {}
+        for cid, members in enumerate(communities):
+            result[cid] = sorted(members)
+            for nid in members:
+                mapping[nid] = cid
+
+        # Persist to DB and update in-memory graph
+        await self._db.batch_update_community_ids(mapping)
+        for nid, cid in mapping.items():
+            if nid in self._graph:
+                self._graph.nodes[nid]["community_id"] = cid
+
+        return result
+
+    def get_community(self, neuron_id: str) -> int | None:
+        """Get the community ID for a neuron (from in-memory graph)."""
+        if neuron_id not in self._graph:
+            return None
+        return self._graph.nodes[neuron_id].get("community_id")
+
+    def community_map(self) -> dict[str, int]:
+        """Return a mapping of neuron_id → community_id for all assigned neurons."""
+        result: dict[str, int] = {}
+        for nid in self._graph.nodes:
+            cid = self._graph.nodes[nid].get("community_id")
+            if cid is not None:
+                result[nid] = cid
+        return result
+
     # -- Stats --------------------------------------------------------------
 
     async def stats(self) -> dict[str, object]:
         """Overview statistics."""
         neuron_count = await self._db.count_neurons()
+        cmap = self.community_map()
         return {
             "neurons": neuron_count,
             "synapses": self._graph.number_of_edges(),
             "graph_density": nx.density(self._graph) if neuron_count > 1 else 0.0,
             "cards_loaded": len(self._cards),
+            "communities": len(set(cmap.values())) if cmap else 0,
         }
