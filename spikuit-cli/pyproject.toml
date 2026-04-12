@@ -1,7 +1,9 @@
 [project]
 name = "spikuit-cli"
-version = "0.5.4"
+version = "0.5.5"
 description = "CLI interface for Spikuit (spkt command)"
+readme = "README.md"
+license = "Apache-2.0"
 requires-python = ">=3.11"
 dependencies = [
     "pyvis>=0.3.2",
