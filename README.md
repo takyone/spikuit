@@ -4,6 +4,23 @@
 
 **A knowledge base that gets smarter the more you use it.**
 
+<p align="center">
+  <a href="https://pypi.org/project/spikuit/"><img src="https://img.shields.io/pypi/v/spikuit.svg?label=spikuit" alt="spikuit on PyPI"></a>
+  <a href="https://pypi.org/project/spikuit-core/"><img src="https://img.shields.io/pypi/v/spikuit-core.svg?label=spikuit-core" alt="spikuit-core on PyPI"></a>
+  <a href="https://pypi.org/project/spikuit/"><img src="https://img.shields.io/pypi/pyversions/spikuit.svg" alt="Supported Python versions"></a>
+  <a href="https://github.com/takyone/spikuit/blob/main/LICENSE"><img src="https://img.shields.io/github/license/takyone/spikuit.svg" alt="License"></a>
+  <a href="https://github.com/takyone/spikuit/actions/workflows/publish.yml"><img src="https://img.shields.io/github/actions/workflow/status/takyone/spikuit/publish.yml?label=publish" alt="Publish status"></a>
+</p>
+
+**Documentation**: <https://takyone.github.io/spikuit/>
+
+**Source Code**: <https://github.com/takyone/spikuit>
+
+> ⚠️ **Pre-1.0 / under active development.** Spikuit is moving fast toward
+> v1.0.0 (Daily Use Ready). Expect frequent breaking changes to the CLI,
+> data schema, and Python API until then. Pin exact versions and read the
+> release notes before upgrading.
+
 ---
 
 ## What is Spikuit?
