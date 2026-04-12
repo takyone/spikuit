@@ -6,4 +6,4 @@ Installing `spikuit` pulls in `spikuit-cli` (the `spkt` command) and
 empty and exists only to provide a single install target.
 """
 
-__version__ = "0.5.7"
+__version__ = "0.5.8"

@@ -48,8 +48,12 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.ref_name }}
           generate_release_notes: true
           files: |
-            dist/spikuit-core/*
-            dist/spikuit-cli/*
-            dist/spikuit/*
+            dist/spikuit-core/*.whl
+            dist/spikuit-core/*.tar.gz
+            dist/spikuit-cli/*.whl
+            dist/spikuit-cli/*.tar.gz
+            dist/spikuit/*.whl
+            dist/spikuit/*.tar.gz
