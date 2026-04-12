@@ -82,6 +82,8 @@ plugins:
             Config: 設定
             Propagation: 伝播
             How to Use: 使い方
+            RAG: RAG
+            Quickstart: クイックスタート
             Appendix: Appendix
             Computational Neuroscience: 計算神経科学
             Cognitive & Developmental Psychology: 認知・発達心理学
@@ -111,6 +113,8 @@ nav:
   - Home: index.md
   - Getting Started: getting-started.md
   - How to Use: how-to-use.md
+  - RAG:
+    - Quickstart: rag/quickstart.md
   - Concepts: concepts.md
   - CLI Reference: cli.md
   - Appendix:
