@@ -8,6 +8,27 @@ allowed-tools: Bash(spkt *)
 
 Help the user maintain and improve their Spikuit knowledge graph through conversation.
 
+## Mandatory: cut a branch before any structural change
+
+Curation is destructive — domain merges, neuron merges, consolidation runs,
+weak-synapse pruning all touch many neurons at once. These MUST run on a
+`consolidate/<date>` branch so the user can reject the result without
+losing main.
+
+```bash
+spkt branch start consolidate-$(date +%Y-%m-%d)
+# ... run the curation actions ...
+# show the user a summary
+spkt branch finish      # confirmed → ff-merge
+spkt branch abandon     # rejected → throw the branch away
+```
+
+Read-only diagnostics (`spkt domain audit`, `diagnose`, `progress`,
+`consolidate` dry-run) do not need a branch — they don't write.
+Single targeted fixes (one `synapse remove`, one `synapse weight`) can
+go to main directly; batch them onto a branch only when you're applying
+several at once.
+
 ## Brain State
 
 Stats: !`spkt stats --json 2>/dev/null || echo '{}'`
@@ -109,11 +130,16 @@ spkt neuron merge <dup1> <dup2> --into <keeper>
 ### Consolidation
 
 ```bash
-# Preview the plan (dry run)
+# Preview the plan (dry run — no branch needed, read-only)
 spkt consolidate --json
 
-# Apply after user approval
+# Cut a branch BEFORE applying
+spkt branch start consolidate-$(date +%Y-%m-%d)
 spkt consolidate apply --json
+
+# Show the diff to the user, then either:
+spkt branch finish      # approved
+spkt branch abandon     # rejected
 ```
 
 ## Conversation Style

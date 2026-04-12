@@ -150,6 +150,54 @@ spkt export --format json -o brain.json
 spkt export --format qabot -o qa-bundle.db
 ```
 
+### Versioning & Undo
+
+`spkt init` creates a git repository inside your brain so every change is
+tracked. Agents are expected to cut a short-lived branch before any batch
+work, then fast-forward into `main` once you've reviewed the result.
+
+```bash
+# Cut a branch before batch ingestion or curation
+spkt branch start papers-2026-04        # → ingest/papers-2026-04
+spkt source ingest ./papers/ -d math
+# ...review the diff...
+spkt branch finish                      # ff-merge into main
+spkt branch abandon                     # or throw the branch away
+```
+
+Branch prefixes by intent:
+
+- `ingest/<tag>` — adding knowledge from a source or batch
+- `consolidate/<date>` — structural cleanup (merges, prunes, consolidation)
+
+Commit messages follow conventions so history filters work:
+
+```
+ingest(<tag>): N neurons from <source>
+consolidate: <summary>
+review(<YYYY-MM-DD>): N fired (<correct>/<total>)
+manual: <user-supplied summary>
+```
+
+Inspecting and rolling back:
+
+```bash
+spkt history -n 20                      # recent brain commits
+spkt history --grep ingest              # filter by message
+spkt undo                               # revert HEAD (asks first)
+spkt undo --to <sha>                    # revert everything since <sha>
+spkt undo --ingest-tag papers-2026-04   # revert a tagged batch
+```
+
+`spkt undo` is a `git revert` wrapper — history is preserved, never rewritten,
+so a bad undo can itself be undone.
+
+If you'd rather manage git yourself, init without it:
+
+```bash
+spkt init --no-git
+```
+
 ### Visualize
 
 ```bash

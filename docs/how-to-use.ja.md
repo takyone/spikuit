@@ -150,6 +150,55 @@ spkt export --format json -o brain.json
 spkt export --format qabot -o qa-bundle.db
 ```
 
+### バージョン管理とUndo
+
+`spkt init` はBrain内にgitリポジトリを作るので、変更はすべて履歴に残ります。
+バッチ取り込みや構造変更の前に短命ブランチを切って、結果を確認してから
+`main` にfast-forwardするのが想定運用です（エージェントもこれを守ります）。
+
+```bash
+# バッチ取り込み・整理の前にブランチを切る
+spkt branch start papers-2026-04        # → ingest/papers-2026-04
+spkt source ingest ./papers/ -d math
+# ...結果を確認...
+spkt branch finish                      # mainにff-merge
+spkt branch abandon                     # 気に入らなければブランチごと破棄
+```
+
+ブランチの命名規則：
+
+- `ingest/<tag>` — ソースやバッチからの知識追加
+- `consolidate/<date>` — 構造的なクリーンアップ（マージ・剪定・consolidate）
+
+コミットメッセージの規約（`spkt history --grep` や `undo --ingest-tag` で
+フィルタできます）：
+
+```
+ingest(<tag>): N neurons from <source>
+consolidate: <要約>
+review(<YYYY-MM-DD>): N fired (<correct>/<total>)
+manual: <ユーザー記述の要約>
+```
+
+履歴確認とロールバック：
+
+```bash
+spkt history -n 20                      # 直近のBrainコミット
+spkt history --grep ingest              # メッセージでフィルタ
+spkt undo                               # HEADをrevert（確認あり）
+spkt undo --to <sha>                    # <sha>以降をすべてrevert
+spkt undo --ingest-tag papers-2026-04   # タグ付きバッチをrevert
+```
+
+`spkt undo` は `git revert` のラッパーなので履歴は書き換えず保存されます。
+誤ったundoもまたundoできます。
+
+自分でgit管理したい場合は次のように初期化できます：
+
+```bash
+spkt init --no-git
+```
+
 ### 可視化
 
 ```bash

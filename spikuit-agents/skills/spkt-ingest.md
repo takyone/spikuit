@@ -1,179 +1,148 @@
-# /spkt-ingest — Knowledge Curation Session
+---
+name: spkt-ingest
+description: Teach knowledge to your Spikuit brain through conversation. Structures input into neurons, discovers related concepts, creates connections, and detects duplicates. Use when you want to save or organize knowledge.
+allowed-tools: Bash(spkt *)
+---
 
-Ingest new knowledge, discover connections, and curate the graph.
+# Knowledge Curation Session
 
-## Prerequisites
+Help the user add and organize knowledge in their Spikuit brain.
 
-- A Brain must be initialized (`spkt init`)
-- The `spkt` CLI must be available
+## Mandatory: cut a branch before any batch work
 
-## Session Flow
+Any ingestion that touches more than one neuron — or any `spkt source ingest`
+at all — MUST run on an `ingest/<tag>` branch. Never commit a batch directly
+to `main`. The user can always reject the result, and rejecting is cheap when
+the work is on a throwaway branch.
 
-1. **Receive input**: The user provides knowledge to add — can be:
-   - Free text (paste from a conversation, article, or notes)
-   - A specific concept/term to define
-   - A file or URL to extract knowledge from
-2. **Structure the content**: Convert raw input into well-formed Markdown neurons
-3. **Ingest neurons**: `spkt neuron add "<content>" -t <type> -d <domain> --source-url "<url>" --json`
-4. **Discover relations**: `spkt retrieve "<query>" --json` to find related neurons
-5. **Create synapses**: `spkt synapse add <new> <related> -t <type>` for each connection
-6. **Confirm with user**: Show what was added and linked, ask for corrections
+```bash
+spkt branch start <short-tag>      # e.g. papers-2026-04, monad-notes
+# ... do the ingest work ...
+# show the user a summary
+spkt branch finish                 # user confirmed → ff-merge into main
+spkt branch abandon                # user rejected → discard the branch
+```
 
-### Source Ingestion from URL/File
+If `spkt branch start` fails ("Brain has no git repository"), tell the user
+and ask whether to continue without versioning or run `spkt init --git`
+on the existing brain.
 
-For bulk content from a URL or file:
-1. **Fetch**: `spkt source ingest "<url-or-path>" -d <domain> --json` — creates Source, returns content
-2. **Chunk**: Split the returned content into atomic concepts
-3. **Add each chunk**: `spkt neuron add "<chunk>" --source-url "<url>" --json` — auto-attaches Source
-4. **Re-detect communities**: `spkt community detect` after major ingestion
+Skip the branch only for **single** `spkt neuron add` from conversation —
+that's cheap to revert with `spkt undo`.
 
-## Content Structuring
+## Brain State
 
-Transform raw input into Markdown neurons. Each neuron should be:
+Stats: !`spkt stats --json 2>/dev/null || echo '{}'`
+
+## Flow
+
+### From conversation (default)
+
+1. Receive input (text, concept, notes)
+2. Structure into Markdown neurons (atomic, self-contained, titled)
+3. Check for duplicates: `spkt retrieve "<term>" --json`
+4. Add: `spkt neuron add "<content>" -t <type> -d <domain> --source-url "<url>" --json`
+5. Discover relations: `spkt retrieve "<content snippet>" --json`
+6. Create synapses: `spkt synapse add <new> <related> -t <type>`
+7. Confirm with user
+
+### From URL or file (source ingestion)
+
+1. Fetch content: `spkt source ingest "<url-or-path>" -d <domain> --json`
+2. Read the returned `content` and `source_id`
+3. Split content into atomic concepts (chunking)
+4. For each chunk: `spkt neuron add "<chunk>" -t <type> -d <domain> --source-url "<url>" --json`
+5. Discover relations and create synapses as above
+6. After communities change significantly: `spkt community detect`
+
+## Structuring Rules
+
 - **Atomic**: one concept per neuron (split multi-concept input)
 - **Self-contained**: readable without external context
 - **Titled**: start with `# Term` or `# Concept Name`
-
-### Structuring Rules
 
 | Input type | How to structure |
 |-----------|-----------------|
 | Definition | `# Term\n\nDefinition text.` |
 | Comparison | Split into separate neurons + contrasts synapse |
-| Process/Steps | One neuron for the process, optionally sub-neurons for steps |
-| Example-heavy | Core concept neuron + examples in body |
+| Process | One neuron for process, optionally sub-neurons for steps |
 | Conversation excerpt | Extract the key insight, discard filler |
 
-### Type and Domain Assignment
+## Type and Domain
 
-Use existing types and domains from the brain when possible. Check with
-`spkt neuron list --json` to see what's already in use. If the content doesn't
-fit existing categories, propose new ones to the user.
-
-Common types: `concept`, `term`, `procedure`, `pattern`, `design`, `language`
-Common domains: `math`, `cs`, `french`, `german`, `philosophy`
+Use existing types/domains from the brain. Check with `spkt neuron list --json`.
+Common types: concept, term, procedure, pattern, design, language
+Common domains: math, cs, french, german, philosophy
 
 ## Relation Discovery
 
-After adding a neuron, search for related existing knowledge:
-
+After adding, search for related neurons:
 ```bash
-spkt retrieve "<first 200 chars of content>" --json
+spkt retrieve "<first 200 chars>" --json
 ```
 
-For each result, evaluate the relationship:
+| Relationship | Synapse type |
+|-------------|-------------|
+| A requires understanding B | `requires` |
+| A extends/builds on B | `extends` |
+| A contrasts with B | `contrasts` |
+| General association | `relates_to` |
 
-| Relationship | Synapse type | When to use |
-|-------------|-------------|-------------|
-| A requires understanding B | `requires` | B is a prerequisite |
-| A extends/builds on B | `extends` | A is a specialization of B |
-| A contrasts with B | `contrasts` | A and B are alternatives or opposites |
-| A and B are related | `relates_to` | General topical connection |
-
-Guidelines:
-- Prefer specific types (`requires`, `extends`, `contrasts`) over `relates_to`
-- Ask the user to confirm non-obvious connections
-- Don't over-link — 2-4 connections per neuron is typical
-- Bidirectional types (`contrasts`, `relates_to`) create edges both ways
+- Prefer specific types over `relates_to`
+- Confirm non-obvious connections with the user
+- 2-4 connections per neuron is typical
 
 ## Duplicate Detection
 
-Before adding, check if the concept already exists:
-
-```bash
-spkt retrieve "<term>" --json
-```
-
-If a near-duplicate is found:
-1. Show the existing neuron to the user
-2. Ask: update existing, merge, or add as separate?
-3. If merging: combine content and transfer synapses
+Before adding, check if the concept exists. If near-duplicate found:
+show it, ask: update existing, merge, or add as separate?
 
 ## Batch Ingestion
 
-When the user provides multiple items at once (e.g., study notes, article
-highlights), process them in a batch:
-
-1. Split into atomic concepts
-2. Show the proposed split to the user for confirmation
-3. Add all neurons
-4. Discover inter-batch relations (new neurons relating to each other)
-5. Discover external relations (new neurons relating to existing graph)
+When multiple items at once:
+1. **Cut a branch first**: `spkt branch start <tag>`
+2. Split into atomic concepts
+3. Show proposed split for confirmation
+4. Add all neurons (commits land on the ingest branch, not main)
+5. Discover inter-batch + external relations
 6. Create all synapses
-
-## Example Session
-
-```
-> /spkt-ingest
-
-What would you like to add to your brain?
-
-> モナドは自己関手の圏におけるモノイド対象。
-  bind (>>=) で計算を連鎖させる。
-  HaskellではIOやMaybeが代表例。
-
-I'll create 1 neuron from this:
-
-── Neuron: Monad ──
-# モナド (Monad)
-
-自己関手の圏におけるモノイド対象。bind (>>=) で計算を連鎖させる。
-
-## Examples
-- IO: 副作用のある計算を純粋に記述
-- Maybe: 失敗する可能性のある計算の連鎖
-
-Type: concept | Domain: math
-
-Found 3 related neurons:
-  1. Functor (0.82) → requires
-  2. Applicative (0.78) → requires
-  3. Category Theory basics (0.71) → relates_to
-
-Create with these connections? [Y/n]
-
-✅ Added neuron n-abc123
-🔗 Linked: Monad --requires--> Functor
-🔗 Linked: Monad --requires--> Applicative
-🔗 Linked: Monad --relates_to--> Category Theory basics
-```
-
-## Brain Discovery
-
-The skill should discover the brain automatically. If no brain is found
-in the current directory tree, ask the user which brain to use.
-Use `--brain <path>` with all `spkt` commands.
+7. Show summary, ask user to confirm
+8. **Confirm** → `spkt branch finish` ┃ **reject** → `spkt branch abandon`
 
 ## Output Format
 
-Keep output concise. After ingestion, report a single summary line:
+Keep output concise. After ingestion, report a single summary line per operation:
 
 ```
 Added N neurons, M synapses. Source linked.
 ```
 
-- **Neuron count**: how many created
-- **Synapse count**: how many connections discovered and created
-- **Source**: mention only when attached (URL or file)
-- Do NOT list every neuron ID or synapse individually unless asked
-- For batch ingestion, show summary then offer "Want to see details?"
+Details:
+- **Neuron count**: how many neurons were created
+- **Synapse count**: how many connections were discovered and created
+- **Source**: mention only when a source was attached (URL or file)
+- **Community re-detection**: mention only if run (`Communities re-detected.`)
 
-When confirming before creation:
+Do NOT list every neuron ID or synapse individually unless the user asks.
+For batch ingestion, show the summary, then offer "Want to see details?" rather than dumping everything.
+
+When confirming with the user before creation, keep it brief:
+
 ```
 Will add 3 neurons (concept/math) with 4 synapses.
 Source: https://example.com/article
 Proceed? [Y/n]
 ```
 
-## Commands Used
+## Commands
 
 ```bash
-spkt neuron add "<content>" -t <type> -d <domain> --json                   # Add neuron
-spkt neuron add "<content>" -t <type> --source-url "<url>" --json          # Add with source
-spkt source ingest "<url-or-path>" -d <domain> --json                       # Fetch + create Source
-spkt retrieve "<query>" --json                                      # Find related
-spkt synapse add <a> <b> -t <type>                                         # Create synapse
-spkt neuron list --json                                                    # List existing neurons
-spkt neuron inspect <id> --json                                            # Neuron detail + sources
-spkt community detect --json                                    # Re-detect communities
+spkt neuron add "<content>" -t <type> -d <domain> --json
+spkt neuron add "<content>" -t <type> -d <domain> --source-url "<url>" --source-title "<title>" --json
+spkt source ingest "<url-or-path>" -d <domain> --json    # fetch + create Source
+spkt retrieve "<query>" --json
+spkt synapse add <a> <b> -t <type>
+spkt neuron list --json
+spkt neuron inspect <id> --json                         # includes sources[]
+spkt community detect --json                            # re-detect after major ingestion
 ```

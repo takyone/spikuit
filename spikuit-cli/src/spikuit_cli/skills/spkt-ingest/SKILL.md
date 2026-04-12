@@ -8,6 +8,28 @@ allowed-tools: Bash(spkt *)
 
 Help the user add and organize knowledge in their Spikuit brain.
 
+## Mandatory: cut a branch before any batch work
+
+Any ingestion that touches more than one neuron — or any `spkt source ingest`
+at all — MUST run on an `ingest/<tag>` branch. Never commit a batch directly
+to `main`. The user can always reject the result, and rejecting is cheap when
+the work is on a throwaway branch.
+
+```bash
+spkt branch start <short-tag>      # e.g. papers-2026-04, monad-notes
+# ... do the ingest work ...
+# show the user a summary
+spkt branch finish                 # user confirmed → ff-merge into main
+spkt branch abandon                # user rejected → discard the branch
+```
+
+If `spkt branch start` fails ("Brain has no git repository"), tell the user
+and ask whether to continue without versioning or run `spkt init --git`
+on the existing brain.
+
+Skip the branch only for **single** `spkt neuron add` from conversation —
+that's cheap to revert with `spkt undo`.
+
 ## Brain State
 
 Stats: !`spkt stats --json 2>/dev/null || echo '{}'`
@@ -78,11 +100,14 @@ show it, ask: update existing, merge, or add as separate?
 ## Batch Ingestion
 
 When multiple items at once:
-1. Split into atomic concepts
-2. Show proposed split for confirmation
-3. Add all neurons
-4. Discover inter-batch + external relations
-5. Create all synapses
+1. **Cut a branch first**: `spkt branch start <tag>`
+2. Split into atomic concepts
+3. Show proposed split for confirmation
+4. Add all neurons (commits land on the ingest branch, not main)
+5. Discover inter-batch + external relations
+6. Create all synapses
+7. Show summary, ask user to confirm
+8. **Confirm** → `spkt branch finish` ┃ **reject** → `spkt branch abandon`
 
 ## Output Format
 

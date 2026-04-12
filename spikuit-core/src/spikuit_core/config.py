@@ -72,6 +72,19 @@ class EmbedderConfig:
 
 
 @dataclass
+class GitConfig:
+    """Git-backed Brain versioning options.
+
+    Attributes:
+        auto_commit: When True (default), agents are expected to commit
+            Brain mutations and enforce the branch policy. Set False to
+            opt out and manage git yourself.
+    """
+
+    auto_commit: bool = True
+
+
+@dataclass
 class BrainConfig:
     """Full Brain configuration — parsed from ``.spikuit/config.toml``.
 
@@ -79,11 +92,13 @@ class BrainConfig:
         name: Brain name (defaults to directory name).
         root: Directory containing ``.spikuit/``.
         embedder: Embedder settings.
+        git: Git versioning settings.
     """
 
     name: str = "default"
     root: Path = field(default_factory=lambda: Path.cwd())
     embedder: EmbedderConfig = field(default_factory=EmbedderConfig)
+    git: GitConfig = field(default_factory=GitConfig)
 
     @property
     def spikuit_dir(self) -> Path:
@@ -226,6 +241,12 @@ def _apply_config(config: BrainConfig, data: dict[str, Any]) -> None:
             timeout=emb.get("timeout", 30.0),
             prefix_style=emb.get("prefix_style", "none"),
             max_searchable_chars=emb.get("max_searchable_chars", 500),
+        )
+
+    git = data.get("git", {})
+    if git:
+        config.git = GitConfig(
+            auto_commit=bool(git.get("auto_commit", True)),
         )
 
 

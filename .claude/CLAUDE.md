@@ -58,6 +58,10 @@ A Brain is a `.spikuit/` directory — like an Obsidian vault or `.git/`.
 Each Brain has its own graph, config, and review schedule. `spkt` auto-discovers
 `.spikuit/` by walking up from CWD. Use `--brain <path>` to target another Brain.
 
+By default `spkt init` also runs `git init` at the Brain root and writes a
+`.gitignore`. The agent uses git for version control of Brain state — see
+"Brain Version Control" below.
+
 ```bash
 spkt init                              # Interactive wizard
 spkt init -p openai-compat \           # Non-interactive with LM Studio
@@ -68,6 +72,80 @@ spkt embed-all                         # Backfill embeddings for existing neuron
 ```
 
 Config lives in `.spikuit/config.toml`.
+
+## Brain Version Control (mandatory branching for batch ops)
+
+Spikuit uses git for Brain versioning — no in-engine snapshots or transactions.
+The engine stays simple; the policy lives in this runbook so agents enforce it
+consistently.
+
+### The rule
+
+**Any batch operation MUST run on a feature branch.** The agent is not
+permitted to commit batches directly to `main`. The user can always interrupt
+or reject before the merge — that's the whole point.
+
+| Operation | Branch required? |
+|---|---|
+| `spkt source ingest` (any input — single file or batch) | **yes** |
+| `spkt consolidate apply` | **yes** |
+| `spkt domain rename` / `domain merge` | **yes** |
+| `spkt neuron merge` | **yes** |
+| `spkt neuron remove` with `--ingest-tag` or N>1 | **yes** |
+| `spkt neuron add` (single) | no — direct to main |
+| `spkt neuron fire` (single) | no — direct to main |
+| `spkt neuron remove <id>` (single) | no — direct to main |
+
+### The flow
+
+```bash
+# 1. Cut a branch
+spkt branch start <tag>          # e.g. papers-2026-04, monad-deep-dive
+
+# 2. Do the batch work (commits land on the branch, NOT on main)
+spkt source ingest ./papers/ -d math --json
+spkt neuron add "..." ...
+git -C <brain-root> commit -m "ingest(<tag>): N neurons from <source-summary>"
+
+# 3. Show the user a summary, ask to confirm
+#    "12 neurons added, 4 sources, 8 synapses on ingest/<tag>. Merge to main?"
+
+# 4a. User approves → fast-forward merge
+spkt branch finish
+
+# 4b. User rejects → discard branch, main untouched
+spkt branch abandon
+```
+
+### Commit message conventions
+
+Use these prefixes so `spkt history --grep` and `spkt undo --ingest-tag` work:
+
+```
+ingest(<tag>): <N> neurons from <source-summary>
+consolidate: <summary of merges/splits>
+review(<YYYY-MM-DD>): <N> neurons fired (<correct>/<total>)
+manual: <user-supplied summary>
+```
+
+### Undo
+
+If the user says "戻したい / undo / take it back":
+
+```bash
+spkt history -n 20                   # show recent Brain commits
+spkt undo                            # revert HEAD (with confirmation)
+spkt undo --ingest-tag <tag>         # revert all commits matching ingest(<tag>)
+spkt undo --to <sha>                 # revert everything since <sha>
+```
+
+These are `git revert` wrappers — history is preserved, never rewritten.
+
+### When git is not present
+
+If `spkt history` returns an error, the Brain has no `.git/`. Either the user
+ran `spkt init --no-git`, or the Brain pre-dates this feature. Don't try to
+auto-init — ask the user whether they want git versioning enabled.
 
 ## spkt CLI
 
