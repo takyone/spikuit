@@ -17,7 +17,7 @@ Due neurons: !`spkt neuron due --json 2>/dev/null || echo '[]'`
 ### 0. Plan
 Enter **planning mode** instead of normal review when any of these is true:
 
-- **First session** — `spkt stats --json` reports `neurons == 0`, or no neuron has ever been fired (no review history). Greet the learner and ask: "What are you studying?" Build a starter roadmap from their answer (a handful of `concept`/`vocab` neurons in the right domain) and offer to hand off to `/spkt-learn` for deeper ingestion.
+- **First session** — `spkt stats --json` reports `neurons == 0`, or no neuron has ever been fired (no review history). Greet the learner and ask: "What are you studying?" Build a starter roadmap from their answer (a handful of `concept`/`vocab` neurons in the right domain) and offer to hand off to `/spkt-ingest` for deeper ingestion.
 - **Long gap** — most recent fire is older than 14 days. Open with: "It's been a while. Want to review your roadmap before we dive back in?" Then run a quick state check (due count, weakest domain) and let the learner steer.
 - **Explicit request** — learner says things like "I want to change my study plan", "what should I learn next", "set a new goal". Switch to planning immediately.
 - **Deadline** — learner says "I need to learn X by Y". Reverse-schedule: estimate concept count vs. days remaining, propose a daily target, and pin it to the current session's plan.

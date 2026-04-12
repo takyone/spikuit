@@ -105,7 +105,7 @@ This copies the skill files (`SKILL.md`) and an agent context file
 **From your Agent CLI:**
 
 ```
-You: /spkt-teach
+You: /spkt-ingest
      I'm studying category theory. A Functor maps between categories
      preserving structure. A Monad is a monoid in the category of endofunctors.
 
@@ -143,13 +143,13 @@ All commands support `--json` for machine-readable output.
 
 ## Use Cases
 
-### /spkt-teach + /spkt-qabot : Self-improving RAG
+### /spkt-ingest + /spkt-qabot : Self-improving RAG
 
 Feed sources into your brain, then query it. Retrieval quality improves
 with every conversation — no re-indexing needed.
 
 ```
-You: /spkt-teach
+You: /spkt-ingest
      Here's an article on attention mechanisms: https://arxiv.org/abs/1706.03762
 
 Agent: Added 8 neurons (Multi-Head Attention, Scaled Dot-Product, ...).
@@ -169,13 +169,13 @@ You: What about computational cost?
 Agent: [prior results auto-penalized, new neurons retrieved]
 ```
 
-### /spkt-teach + /spkt-tutor : AI study partner
+### /spkt-ingest + /spkt-tutor : AI study partner
 
 Build a knowledge graph from your study material, then let an AI tutor
 teach, quiz, and coach you based on what you actually know.
 
 ```
-You: /spkt-teach
+You: /spkt-ingest
      I'm studying category theory. Key concepts:
      - A Functor maps between categories preserving structure
      - A Natural Transformation is a morphism between functors
@@ -231,7 +231,7 @@ spikuit-agents/   # Agent skills and adapters
 ```
 
 The core engine is LLM-independent — `spkt` commands work standalone.
-Agent skills (`/spkt-tutor`, `/spkt-teach`, `/spkt-qabot`, `/spkt-curator`)
+Agent skills (`/spkt-tutor`, `/spkt-ingest`, `/spkt-qabot`, `/spkt-curator`)
 add LLM-powered interactions on top, designed for Agent CLIs like Claude Code.
 
 ## Development
