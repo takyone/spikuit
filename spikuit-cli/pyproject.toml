@@ -1,6 +1,6 @@
 [project]
 name = "spikuit-cli"
-version = "0.5.6"
+version = "0.5.7"
 description = "CLI interface for Spikuit (spkt command)"
 readme = "README.md"
 license = "Apache-2.0"

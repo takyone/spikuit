@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-__version__ = "0.5.6"
+__version__ = "0.5.7"
 
 # -- Always available (lightweight) ---------------------------------------
 
