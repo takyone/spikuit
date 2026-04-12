@@ -497,6 +497,54 @@ tarballバックアップをインポートします。
 spkt import backup.tar.gz
 ```
 
+## バージョン管理（gitバックエンド）
+
+`spkt init` はBrain内にgitリポジトリを作成し、変更を全て履歴に残します。
+バッチ取り込みや構造変更の前に短命ブランチを切り、結果を確認してから
+`main` にfast-forwardするのがエージェントの想定運用です。
+
+### `spkt branch start`
+
+`main` から ingest/consolidate ブランチを切ります。
+
+```bash
+spkt branch start papers-2026-04        # → ingest/papers-2026-04
+spkt branch start consolidate-2026-04   # → consolidate/2026-04
+```
+
+### `spkt branch finish`
+
+現在のブランチを `main` にfast-forwardマージして削除します。
+`main` や `ingest/`/`consolidate/` 以外のブランチでは動作を拒否します。
+
+### `spkt branch abandon`
+
+現在のブランチを破棄して `main` に戻ります。`finish` と同じガード付き。
+
+### `spkt history`
+
+直近のBrainコミット一覧を表示します（`git log` ラッパー）。
+
+```bash
+spkt history -n 20
+spkt history --grep ingest
+spkt history --json
+```
+
+### `spkt undo`
+
+`git revert` でコミットを打ち消します。履歴は書き換えず保存されます。
+
+```bash
+spkt undo                               # HEADをrevert（確認あり）
+spkt undo --to <sha>                    # <sha>以降をすべてrevert
+spkt undo --ingest-tag papers-2026-04   # ingest(papers-2026-04)タグの一括取り消し
+spkt undo -y                            # 確認をスキップ
+```
+
+git管理を使わない場合は `spkt init --no-git`、または
+`.spikuit/config.toml` に `[git] auto_commit = false` を指定してください。
+
 ## 非推奨コマンド
 
 旧コマンドもまだ動きますが、stderrに非推奨の警告が出ます。

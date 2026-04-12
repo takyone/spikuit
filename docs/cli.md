@@ -498,6 +498,55 @@ Import a tarball backup.
 spkt import backup.tar.gz
 ```
 
+## Versioning (Git-backed)
+
+`spkt init` creates a git repository inside the brain so every change is
+tracked. Agents are expected to cut a short-lived branch before any batch
+work, then fast-forward into `main` once the result is reviewed.
+
+### `spkt branch start`
+
+Cut a new ingest/consolidate branch from `main`.
+
+```bash
+spkt branch start papers-2026-04        # → ingest/papers-2026-04
+spkt branch start consolidate-2026-04   # → consolidate/2026-04
+```
+
+### `spkt branch finish`
+
+Fast-forward merge the current branch into `main` and delete it. Refuses
+to operate on `main` or any non-`ingest/`/`consolidate/` branch.
+
+### `spkt branch abandon`
+
+Discard the current branch and switch back to `main`. Same guardrail as
+`finish`.
+
+### `spkt history`
+
+List recent brain commits (a `git log` wrapper).
+
+```bash
+spkt history -n 20
+spkt history --grep ingest
+spkt history --json
+```
+
+### `spkt undo`
+
+Revert commits via `git revert` — history is preserved, never rewritten.
+
+```bash
+spkt undo                               # revert HEAD (asks first)
+spkt undo --to <sha>                    # revert everything since <sha>
+spkt undo --ingest-tag papers-2026-04   # revert all commits matching ingest(papers-2026-04)
+spkt undo -y                            # skip confirmation
+```
+
+To opt out of git-backed versioning, run `spkt init --no-git` or set
+`[git] auto_commit = false` in `.spikuit/config.toml`.
+
 ## Deprecated Commands
 
 Old flat commands still work but show deprecation warnings on stderr.

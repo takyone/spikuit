@@ -80,7 +80,7 @@ spkt neuron add "# Ownership in Rust\n\nEach value has exactly one owner. When t
   -t concept -d rust
 
 # Add from a URL
-spkt source learn "https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html" -d rust
+spkt source ingest "https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html" -d rust
 
 # Connect related concepts
 spkt synapse add <id-1> <id-2> -t relates_to
