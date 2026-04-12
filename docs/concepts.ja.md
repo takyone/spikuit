@@ -247,8 +247,8 @@ await circuit.add_neuron(...)              # ReadOnlyError
 spikuit-core/     # 純粋なエンジン（LLM依存なし）
 ├── Circuit       #   ナレッジグラフ + FSRS + 伝播
 ├── Embedder      #   プラガブルなエンベディング（タスクタイププレフィックス対応）
-├── Sessions      #   QABot, Learn, Tutor
-└── Learn         #   クイズ戦略（Flashcard, AutoQuiz）
+├── Sessions      #   QABot, Ingest, Tutor
+└── Quiz          #   クイズ戦略（Flashcard, AutoQuiz）
 
 spikuit-cli/      # spktコマンド（Typer）
 spikuit-agents/   # エージェントスキルとアダプター

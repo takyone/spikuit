@@ -254,8 +254,8 @@ or build a static RAG endpoint.
 spikuit-core/     # Pure engine (no LLM dependency)
 ├── Circuit       #   Knowledge graph + FSRS + propagation
 ├── Embedder      #   Pluggable text embedding (task-type prefixes)
-├── Sessions      #   QABot, Learn, Tutor
-└── Learn         #   Quiz strategies (Flashcard, AutoQuiz)
+├── Sessions      #   QABot, Ingest, Tutor
+└── Quiz          #   Quiz strategies (Flashcard, AutoQuiz)
 
 spikuit-cli/      # spkt command (Typer)
 spikuit-agents/   # Agent skills and adapters

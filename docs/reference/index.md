@@ -10,6 +10,6 @@ Python API documentation for `spikuit-core`.
 | [Circuit](circuit.md) | The knowledge graph engine |
 | [Sessions](sessions.md) | QABotSession, IngestSession |
 | [Embedder](embedder.md) | Pluggable embedding providers |
-| [Scaffold & Learn](scaffold.md) | Scaffolding computation and Learn protocol |
+| [Scaffold & Quiz](scaffold.md) | Scaffolding computation and Quiz protocol |
 | [Config](config.md) | Brain configuration and discovery |
 | [Propagation](propagation.md) | APPNP, STDP, LIF algorithms |
