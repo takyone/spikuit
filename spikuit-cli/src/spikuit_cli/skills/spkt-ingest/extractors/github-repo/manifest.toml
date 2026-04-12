@@ -1,0 +1,14 @@
+[extractor]
+name = "github-repo"
+version = "0.1.0"
+description = "Extract neurons from a GitHub repository. Reads README + tree structure into an overview neuron, optionally delegates to language-specific extractors per file."
+author = "spikuit"
+
+[match]
+file_patterns = []
+url_patterns = ["github.com/"]
+content_keywords = []
+
+[requires]
+commands = ["gh"]
+python_packages = []

@@ -1,0 +1,14 @@
+[extractor]
+name = "python-code"
+version = "0.1.0"
+description = "Extract neurons from Python source via AST analysis. Top-level functions/classes become neurons; imports become 'requires' synapses."
+author = "spikuit"
+
+[match]
+file_patterns = ["*.py", "pyproject.toml"]
+url_patterns = []
+content_keywords = []
+
+[requires]
+commands = ["python3"]
+python_packages = []

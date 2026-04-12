@@ -34,6 +34,47 @@ that's cheap to revert with `spkt undo`.
 
 Stats: !`spkt stats --json 2>/dev/null || echo '{}'`
 
+## Extractor routing
+
+Spikuit ships an **extractor framework**: each format (markdown, Python
+source, PDF papers, GitHub repos, ...) is a `SKILL.md + manifest.toml` bundle
+under `spkt-ingest/extractors/<name>/`. Brain-local extractors at
+`<BRAIN>/.spikuit/extractors/<name>/` shadow the system ones (shadcn-style).
+
+**Before ingesting any non-trivial source**, route it:
+
+```bash
+spkt skills extractor list --json          # what's installed?
+spkt skills extractor status --json        # what's actually runnable here?
+```
+
+Pick the extractor whose `match.file_patterns` / `url_patterns` /
+`content_keywords` best matches the input. If nothing specialized matches,
+fall back to the **`default`** extractor (generic markdown chunker — see
+`spkt skills extractor show default`).
+
+If the best-fit extractor is `available: false` (missing commands or Python
+packages in `status`), do not silently fall back. Tell the user what is
+missing and ask whether to:
+
+1. Install the missing dependency and retry, or
+2. Proceed with the `default` extractor (lossy — say so explicitly).
+
+### Creating a new extractor on the fly
+
+If the user shows you a new format ("here's a Notion export, ingest these")
+and no extractor matches:
+
+1. `spkt skills extractor fork _template <new-name>`
+2. Edit `<BRAIN>/.spikuit/extractors/<new-name>/manifest.toml` to fill in
+   `[match]` patterns and any `[requires]` dependencies based on the example
+3. Edit `SKILL.md` with the preprocessing strategy and neuron rules
+4. `spkt skills extractor refresh`
+5. `spkt skills extractor status <new-name>` to verify it's runnable
+6. Test on the example input the user provided
+
+This is the meta-generator path — extractors are user-extensible by example.
+
 ## Flow
 
 ### From conversation (default)

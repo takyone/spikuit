@@ -106,6 +106,34 @@ def test_resolve_includes_bundled_default():
     assert extractors["default"].tier == "system"
 
 
+def test_resolve_includes_reference_extractors():
+    """python-code, pdf-paper, github-repo ship with v0.6.1."""
+    extractors = resolve(brain_root=None)
+    for name in ("python-code", "pdf-paper", "github-repo"):
+        assert name in extractors, f"{name} not found in system tier"
+        assert extractors[name].tier == "system"
+        assert extractors[name].skill_md.is_file()
+
+
+def test_reference_extractors_have_match_rules():
+    """Reference extractors must declare at least one match pattern."""
+    extractors = resolve(brain_root=None)
+    for name in ("python-code", "pdf-paper", "github-repo"):
+        m = extractors[name].manifest.match
+        assert m.file_patterns or m.url_patterns or m.content_keywords, \
+            f"{name} has no match rules"
+
+
+def test_pdf_paper_declares_pymupdf_requirement():
+    extractors = resolve(brain_root=None)
+    assert "pymupdf" in extractors["pdf-paper"].manifest.requires.python_packages
+
+
+def test_github_repo_declares_gh_command():
+    extractors = resolve(brain_root=None)
+    assert "gh" in extractors["github-repo"].manifest.requires.commands
+
+
 def test_brain_tier_shadows_system(brain):
     bdir = brain_extractors_dir(brain)
     bdir.mkdir(parents=True)

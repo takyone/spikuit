@@ -1,0 +1,14 @@
+[extractor]
+name = "pdf-paper"
+version = "0.1.0"
+description = "Extract neurons from academic PDF papers. Detects abstract / intro / methods / results / conclusion sections via PyMuPDF."
+author = "spikuit"
+
+[match]
+file_patterns = ["*.pdf"]
+url_patterns = ["arxiv.org/pdf/", "arxiv.org/abs/"]
+content_keywords = []
+
+[requires]
+commands = []
+python_packages = ["pymupdf"]

@@ -1226,6 +1226,38 @@ spkt export --format json -o brain.json
 spkt export --format qabot -o qa-bundle.db
 ```
 
+### Extractors
+
+Spikuit ships pluggable ingestion extractors for common source formats.
+`spkt source ingest` routes input to the matching extractor; you can list,
+inspect, and check what's installed:
+
+```bash
+spkt skills extractor list
+spkt skills extractor status              # which extractors are runnable here?
+spkt skills extractor show python-code    # full SKILL.md for one
+```
+
+Bundled with v0.6.1:
+
+| Extractor | Picks up | Requires |
+|---|---|---|
+| `default` | anything (fallback) | — |
+| `python-code` | `*.py`, `pyproject.toml` | `python3` |
+| `pdf-paper` | `*.pdf`, `arxiv.org/...` | `pymupdf` |
+| `github-repo` | `github.com/...` | `gh` |
+
+To customize a system extractor for your brain (shadcn-style copy-to-own):
+
+```bash
+spkt skills extractor fork python-code             # shadow the system version
+spkt skills extractor fork _template my-format     # start from the skeleton
+spkt skills extractor refresh
+```
+
+Brain-local extractors live at `<brain>/.spikuit/extractors/<name>/` and
+override the system tier on name collision.
+
 ### Versioning & Undo
 
 `spkt init` creates a git repository inside your brain so every change is

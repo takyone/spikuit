@@ -150,6 +150,39 @@ spkt export --format json -o brain.json
 spkt export --format qabot -o qa-bundle.db
 ```
 
+### エクストラクタ
+
+Spikuit はソース形式ごとのプラガブルな取り込みエクストラクタを同梱しています。
+`spkt source ingest` は入力に合うエクストラクタへルーティングし、何が
+インストールされているか確認できます：
+
+```bash
+spkt skills extractor list
+spkt skills extractor status              # この環境で動かせるか？
+spkt skills extractor show python-code    # 単体のSKILL.md全文
+```
+
+v0.6.1 同梱エクストラクタ：
+
+| 名前 | 対応 | 要件 |
+|---|---|---|
+| `default` | 何でも（フォールバック） | — |
+| `python-code` | `*.py`、`pyproject.toml` | `python3` |
+| `pdf-paper` | `*.pdf`、`arxiv.org/...` | `pymupdf` |
+| `github-repo` | `github.com/...` | `gh` |
+
+ブランド内でシステムエクストラクタをカスタマイズしたい場合は shadcn-style の
+copy-to-own で：
+
+```bash
+spkt skills extractor fork python-code             # システム版を上書き
+spkt skills extractor fork _template my-format     # スケルトンから新規作成
+spkt skills extractor refresh
+```
+
+ブランド内エクストラクタは `<brain>/.spikuit/extractors/<name>/` に配置され、
+名前衝突時はシステム同梱を上書きします。
+
 ### バージョン管理とUndo
 
 `spkt init` はBrain内にgitリポジトリを作るので、変更はすべて履歴に残ります。
