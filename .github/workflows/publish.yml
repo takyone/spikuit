@@ -20,8 +20,26 @@ jobs:
       - name: Set up Python
         run: uv python install 3.11
 
-      - name: Build
-        run: uv build
+      - name: Build spikuit-core
+        run: uv build --package spikuit-core --out-dir dist/spikuit-core
 
-      - name: Publish to PyPI
+      - name: Build spikuit-cli
+        run: uv build --package spikuit-cli --out-dir dist/spikuit-cli
+
+      - name: Build spikuit (metapackage)
+        run: uv build --package spikuit --out-dir dist/spikuit
+
+      - name: Publish spikuit-core
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/spikuit-core
+
+      - name: Publish spikuit-cli
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/spikuit-cli
+
+      - name: Publish spikuit
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/spikuit
