@@ -108,15 +108,37 @@ class OpenAICompatEmbedder(Embedder):
         dimension: Expected embedding dimension.
         api_key: Bearer token (default ``"not-needed"`` for local servers).
         timeout: HTTP request timeout in seconds.
-        prefix_style: Task-type prefix style.
-            ``"nomic"`` → ``search_document: `` / ``search_query: ``.
-            ``"cohere"`` → ``search_document: `` / ``search_query: ``.
-            ``"none"`` (default) → no prefix.
+        prefix_style: Task-type prefix style. Pick the one that matches
+            your model family — using the wrong prefix silently degrades
+            retrieval quality.
+
+            * ``"nomic"`` → ``search_document: `` / ``search_query: ``
+              (Nomic AI ``nomic-embed-text-v1.5`` and friends)
+            * ``"cohere"`` → ``search_document: `` / ``search_query: ``
+              (Cohere ``embed-english-v3.0`` etc., same surface as Nomic)
+            * ``"e5"`` → ``passage: `` / ``query: `` (intfloat
+              ``e5-large-v2``, ``multilingual-e5-large-instruct``, ...)
+            * ``"mxbai"`` → empty / ``Represent this sentence for
+              searching relevant passages: `` (MixedBread AI
+              ``mxbai-embed-large-v1``)
+            * ``"bge"`` → empty / ``Represent this sentence for
+              searching relevant passages: `` (BAAI ``bge-large-en-v1.5``;
+              ``bge-m3`` does not need a prefix — use ``"none"`` instead)
+            * ``"none"`` (default) → no prefix
     """
 
     PREFIX_MAP: dict[str, dict[str, str]] = {
         "nomic": {"document": "search_document: ", "query": "search_query: "},
         "cohere": {"document": "search_document: ", "query": "search_query: "},
+        "e5": {"document": "passage: ", "query": "query: "},
+        "mxbai": {
+            "document": "",
+            "query": "Represent this sentence for searching relevant passages: ",
+        },
+        "bge": {
+            "document": "",
+            "query": "Represent this sentence for searching relevant passages: ",
+        },
     }
 
     def __init__(
@@ -275,8 +297,9 @@ def create_embedder(
         dimension: Embedding dimension.
         api_key: Bearer token (OpenAI-compat only).
         timeout: HTTP timeout in seconds.
-        prefix_style: Task-type prefix style (``"nomic"``, ``"cohere"``,
-            or ``"none"``).
+        prefix_style: Task-type prefix style. One of ``"nomic"``,
+            ``"cohere"``, ``"e5"``, ``"mxbai"``, ``"bge"``, or ``"none"``.
+            See ``OpenAICompatEmbedder`` for the per-style mapping.
 
     Returns:
         An Embedder instance, or ``None`` if provider is ``"none"``.

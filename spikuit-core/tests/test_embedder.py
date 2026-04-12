@@ -344,6 +344,40 @@ def test_ollama_prefix_none():
     assert emb.apply_prefix("hello", EmbeddingType.DOCUMENT) == "hello"
 
 
+def test_openai_compat_prefix_e5():
+    """E5 family uses lowercase passage:/query: prefixes."""
+    emb = OpenAICompatEmbedder(prefix_style="e5")
+    assert emb.apply_prefix("hello", EmbeddingType.DOCUMENT) == "passage: hello"
+    assert emb.apply_prefix("hello", EmbeddingType.QUERY) == "query: hello"
+
+
+def test_openai_compat_prefix_mxbai():
+    """mxbai prefixes the query side only."""
+    emb = OpenAICompatEmbedder(prefix_style="mxbai")
+    assert emb.apply_prefix("hello", EmbeddingType.DOCUMENT) == "hello"
+    assert (
+        emb.apply_prefix("hello", EmbeddingType.QUERY)
+        == "Represent this sentence for searching relevant passages: hello"
+    )
+
+
+def test_openai_compat_prefix_bge():
+    """BGE uses the same query-side instruction as mxbai."""
+    emb = OpenAICompatEmbedder(prefix_style="bge")
+    assert emb.apply_prefix("hello", EmbeddingType.DOCUMENT) == "hello"
+    assert (
+        emb.apply_prefix("hello", EmbeddingType.QUERY)
+        == "Represent this sentence for searching relevant passages: hello"
+    )
+
+
+def test_ollama_prefix_e5():
+    """OllamaEmbedder shares the OpenAICompat PREFIX_MAP."""
+    emb = OllamaEmbedder(prefix_style="e5")
+    assert emb.apply_prefix("hello", EmbeddingType.DOCUMENT) == "passage: hello"
+    assert emb.apply_prefix("hello", EmbeddingType.QUERY) == "query: hello"
+
+
 # ---------------------------------------------------------------------------
 # Frontmatter stripping in Circuit embedding pipeline
 # ---------------------------------------------------------------------------
