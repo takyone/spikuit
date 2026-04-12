@@ -21,15 +21,8 @@ classifiers = [
     "Topic :: Education",
 ]
 dependencies = [
-    "aiosqlite>=0.20.0",
-    "fsrs>=6.0.0",
-    "httpx>=0.28.1",
-    "msgspec>=0.19.0",
-    "networkx>=3.2",
-    "numpy>=1.26.0",
-    "pyvis>=0.3.2",
-    "sqlite-vec>=0.1.9",
-    "typer>=0.24.1",
+    "spikuit-cli",
+    "spikuit-core[engine]",
 ]
 
 [project.urls]
@@ -39,21 +32,12 @@ Repository = "https://github.com/takyone/spikuit"
 Issues = "https://github.com/takyone/spikuit/issues"
 "LLMs (llms.txt)" = "https://takyone.github.io/spikuit/llms.txt"
 
-[project.scripts]
-spkt = "spikuit_cli.main:main"
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.hatch.build]
-skip-excluded-dirs = true
-
 [tool.hatch.build.targets.wheel]
-packages = [
-    "spikuit-core/src/spikuit_core",
-    "spikuit-cli/src/spikuit_cli",
-]
+packages = ["src/spikuit"]
 
 [tool.uv.workspace]
 members = [
