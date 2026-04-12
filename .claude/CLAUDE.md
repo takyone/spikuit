@@ -107,7 +107,7 @@ All commands support `--json` for machine-readable output and `--brain` to targe
 | `spkt synapse remove` | Remove a Synapse |
 | `spkt synapse weight` | Set synapse weight |
 | `spkt synapse list` | List synapses (filter by neuron/type) |
-| `spkt source learn` | Ingest URL/file/directory |
+| `spkt source ingest` | Ingest URL/file/directory |
 | `spkt source list` | List sources with neuron counts |
 | `spkt source inspect` | Source detail + attached neurons |
 | `spkt source update` | Update source metadata |

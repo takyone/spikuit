@@ -1,10 +1,10 @@
-"""Learn — abstract protocol for knowledge acquisition sessions.
+"""Quiz — abstract protocol for review/quiz strategies.
 
-Learn is the abstraction layer between Brain (Circuit) and external
-interactions (Quiz, Flashcard, Import, Conversation). Each Learn
-implementation defines how to select, present, evaluate, and record.
+Quiz is the abstraction layer between Brain (Circuit) and review
+interactions (Flashcard, AutoQuiz, ...). Each Quiz implementation
+defines how to select, present, evaluate, and record.
 
-Scaffolding is a cross-cutting concern: every Learn type uses it to
+Scaffolding is a cross-cutting concern: every Quiz type uses it to
 adapt difficulty and support level.
 
 Implementations:
@@ -26,8 +26,8 @@ if TYPE_CHECKING:
     from .circuit import Circuit
 
 
-class Learn(ABC):
-    """Abstract base for learning session strategies.
+class Quiz(ABC):
+    """Abstract base for quiz/review strategies.
 
     Subclasses implement the select → scaffold → present → evaluate → record
     loop. The base class provides common helpers for scaffolding and recording.
@@ -61,7 +61,7 @@ class Learn(ABC):
         ...
 
 
-class Flashcard(Learn):
+class Flashcard(Quiz):
     """Simple flashcard-style learning — show content, self-grade.
 
     No LLM required. The learner sees the neuron content and grades
@@ -143,7 +143,7 @@ GenerateFn = Callable[[QuizRequest], Awaitable[QuizItem]]
 GradeFn = Callable[[QuizItem, str], Awaitable[Grade]]
 
 
-class AutoQuiz(Learn):
+class AutoQuiz(Quiz):
     """LLM-powered quiz — generate questions and grade answers.
 
     Uses callback functions for LLM operations so the core engine

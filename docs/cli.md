@@ -213,20 +213,20 @@ spkt synapse remove <pre-id> <post-id> --json
 
 ## Source Commands
 
-### `spkt source learn`
+### `spkt source ingest`
 
 Ingest a URL, file, or directory. Creates Source records, extracts content,
 and outputs it for agent-driven chunking.
 
 ```bash
 # Single URL
-spkt source learn "https://example.com/article" -d cs --json
+spkt source ingest "https://example.com/article" -d cs --json
 
 # Single file
-spkt source learn ./notes.md -d math --json
+spkt source ingest ./notes.md -d math --json
 
 # Directory (batch ingestion)
-spkt source learn ./papers/ -d cs --json
+spkt source ingest ./papers/ -d cs --json
 ```
 
 | Option | Description |
@@ -511,6 +511,6 @@ Use the resource-oriented form above.
 | `spkt fire` | `spkt neuron fire` |
 | `spkt due` | `spkt neuron due` |
 | `spkt link` | `spkt synapse add` |
-| `spkt learn` | `spkt source learn` |
+| `spkt learn` | `spkt source ingest` |
 | `spkt refresh` | `spkt source refresh` |
 | `spkt communities` | `spkt community list` / `spkt community detect` |

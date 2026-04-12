@@ -6,7 +6,15 @@ import pytest
 import pytest_asyncio
 
 from spikuit_core import Circuit, Neuron, NullEmbedder
-from spikuit_core.embedder import Embedder, EmbeddingType, OpenAICompatEmbedder, OllamaEmbedder, vec_to_blob, blob_to_vec
+from spikuit_core.embedder import (
+    Embedder,
+    EmbeddingType,
+    ModelSpec,
+    OpenAICompatEmbedder,
+    OllamaEmbedder,
+    vec_to_blob,
+    blob_to_vec,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -369,6 +377,44 @@ def test_openai_compat_prefix_bge():
         emb.apply_prefix("hello", EmbeddingType.QUERY)
         == "Represent this sentence for searching relevant passages: hello"
     )
+
+
+# ---------------------------------------------------------------------------
+# supported_models + detect_dimension
+# ---------------------------------------------------------------------------
+
+
+def test_supported_models_default_empty():
+    """Local-server subclasses return [] from supported_models."""
+    assert OpenAICompatEmbedder.supported_models() == []
+    assert OllamaEmbedder.supported_models() == []
+    assert NullEmbedder.supported_models() == []
+
+
+@pytest.mark.asyncio
+async def test_detect_dimension_probes_endpoint():
+    """detect_dimension probes via embed() and returns vector length."""
+    emb = NullEmbedder(dimension=11)
+    assert await emb.detect_dimension() == 11
+
+
+def test_model_spec_is_frozen_and_hashable():
+    """ModelSpec is a frozen msgspec.Struct — hashable for set/dict use."""
+    a = ModelSpec(name="m", dimensions=(768,))
+    b = ModelSpec(name="m", dimensions=(768,))
+    assert hash(a) == hash(b)
+    with pytest.raises(AttributeError):
+        a.name = "x"  # type: ignore[misc]
+
+
+def test_model_spec_supports_matryoshka_dimensions():
+    """Multi-value dimensions express Matryoshka allowed sizes."""
+    spec = ModelSpec(
+        name="gemini-embedding-001",
+        dimensions=(3072, 1536, 768),
+    )
+    assert 1536 in spec.dimensions
+    assert spec.prefix_style == "none"
 
 
 def test_ollama_prefix_e5():

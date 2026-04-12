@@ -9,7 +9,7 @@ Sessions define how you interact with it.
 
 ::: spikuit_core.QABotSession
 
-::: spikuit_core.LearnSession
+::: spikuit_core.IngestSession
 
 ::: spikuit_core.TutorState
 

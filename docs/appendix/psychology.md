@@ -40,7 +40,7 @@
 
 - Schemas = mental frameworks that organize knowledge (Bartlett, 1932; Piaget)
 - New info is easier to learn when it connects to existing schemas
-- In Spikuit: the knowledge graph *is* the schema; `LearnSession.ingest()` auto-discovers related concepts
+- In Spikuit: the knowledge graph *is* the schema; `IngestSession.ingest()` auto-discovers related concepts
 
 ### References
 

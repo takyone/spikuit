@@ -12,6 +12,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 
 import httpx
+import msgspec
 
 
 class EmbeddingType(str, Enum):
@@ -25,6 +26,34 @@ class EmbeddingType(str, Enum):
 
     DOCUMENT = "document"
     QUERY = "query"
+
+
+class ModelSpec(msgspec.Struct, frozen=True, gc=False):
+    """Static description of a model an Embedder subclass supports.
+
+    Used by ``spkt init`` and similar tooling to populate the model
+    picker without hardcoding a registry in core. Each concrete
+    :class:`Embedder` subclass that ships with a fixed catalogue of
+    paid/known models exposes them via
+    :meth:`Embedder.supported_models`. Local-server subclasses
+    (LM Studio, Ollama) return ``[]`` and rely on
+    :meth:`Embedder.detect_dimension` instead.
+
+    Attributes:
+        name: Provider-side model identifier.
+        dimensions: Allowed embedding dimensions. Single-value tuple
+            for fixed-dim models; multi-value for Matryoshka models
+            like Gemini ``gemini-embedding-001``
+            (e.g. ``(3072, 1536, 768)``).
+        prefix_style: Default ``prefix_style`` to use with this model
+            (``"none"`` if the model doesn't need task-type prefixes).
+        notes: Optional human-readable note for the picker UI.
+    """
+
+    name: str
+    dimensions: tuple[int, ...]
+    prefix_style: str = "none"
+    notes: str = ""
 
 
 class Embedder(ABC):
@@ -41,6 +70,38 @@ class Embedder(ABC):
     def dimension(self) -> int:
         """Dimensionality of the embedding vectors."""
         ...
+
+    @classmethod
+    def supported_models(cls) -> list[ModelSpec]:
+        """Static catalogue of models this subclass officially supports.
+
+        Returns ``[]`` by default. Subclasses that target paid providers
+        with a known fixed model list (OpenAI, Gemini, Voyage, ...)
+        should override this so ``spkt init`` can render a picker
+        without hardcoding a registry in core.
+
+        Local-server subclasses (LM Studio, Ollama) should leave this
+        empty and rely on :meth:`detect_dimension` instead — the user
+        already chose the model on the server side.
+        """
+        return []
+
+    async def detect_dimension(self) -> int:
+        """Probe the live endpoint to determine the embedding dimension.
+
+        Calls :meth:`embed` once with a tiny payload and returns the
+        length of the resulting vector. Useful for `spkt init` and
+        similar tooling that wants to fill in ``dimension`` automatically
+        without making the user count it themselves.
+
+        Subclasses do **not** normally need to override this — but a
+        provider that bills per call (OpenAI, Gemini, etc.) is expected
+        to refuse the probe and rely on :meth:`supported_models`
+        instead, so the metered providers don't surprise users with a
+        cost during ``spkt init``.
+        """
+        vec = await self.embed("ping")
+        return len(vec)
 
     @abstractmethod
     async def embed(self, text: str) -> list[float]:

@@ -3,8 +3,8 @@
 A Session wraps a Circuit and provides a specific interaction pattern.
 The Brain (Circuit) is the universal backend; Sessions are the modes:
 - QABotSession: RAG chat with retrieval feedback optimization
-- LearnSession: Conversational knowledge curation
-- ReviewSession: Spaced repetition (wraps Learn protocol) — planned
+- IngestSession: Conversational knowledge ingestion / curation
+- ReviewSession: Spaced repetition (wraps Quiz protocol) — planned
 
 Sessions can be persistent (retrieval_boost committed on close) or
 ephemeral (weights discarded on close).
@@ -239,7 +239,7 @@ class QABotSession(Session):
         }
 
 
-class LearnSession(Session):
+class IngestSession(Session):
     """Conversational knowledge curation session.
 
     Lets a user (or agent) build and refine the knowledge graph through
@@ -250,7 +250,7 @@ class LearnSession(Session):
 
     Example:
         ```python
-        session = LearnSession(circuit)
+        session = IngestSession(circuit)
         n, related = await session.ingest(
             "# Functor\\n\\nA mapping between categories.",
             type="concept",
@@ -311,7 +311,7 @@ class LearnSession(Session):
 
         Returns:
             Tuple of ``(new_neuron, related_neurons)``. Use
-            [`relate()`][spikuit_core.LearnSession.relate] to connect them.
+            [`relate()`][spikuit_core.IngestSession.relate] to connect them.
         """
         kwargs: dict[str, object] = {}
         if type is not None:

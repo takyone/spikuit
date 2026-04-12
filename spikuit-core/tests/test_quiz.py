@@ -1,4 +1,4 @@
-"""Tests for Learn protocol and Flashcard implementation."""
+"""Tests for Quiz protocol and Flashcard implementation."""
 
 from datetime import datetime, timezone
 
@@ -8,7 +8,7 @@ from fsrs import Card, Rating, Scheduler, State
 
 from spikuit_core import Circuit, Grade, Neuron, SynapseType
 from spikuit_core.models import Scaffold, ScaffoldLevel
-from spikuit_core.learn import Flashcard, _extract_body, _extract_title
+from spikuit_core.quiz import Flashcard, _extract_body, _extract_title
 
 
 @pytest_asyncio.fixture

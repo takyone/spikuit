@@ -82,7 +82,7 @@ machine-readable output and `--brain <path>` to target a specific Brain.
 
 | Command | Purpose |
 |---------|---------|
-| `spkt source learn "<url-or-path>" -d <domain>` | Ingest URL/file/directory |
+| `spkt source ingest "<url-or-path>" -d <domain>` | Ingest URL/file/directory |
 | `spkt source list` | List sources with neuron counts |
 | `spkt source inspect <id>` | Source detail + attached neurons |
 | `spkt source update <id>` | Update source metadata |

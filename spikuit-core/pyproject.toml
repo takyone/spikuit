@@ -18,6 +18,7 @@ classifiers = [
 ]
 dependencies = [
     "httpx>=0.28.1",
+    "msgspec>=0.19.0",
     "numpy>=1.26.0",
 ]
 
@@ -25,7 +26,6 @@ dependencies = [
 engine = [
     "aiosqlite>=0.20.0",
     "fsrs>=6.0.0",
-    "msgspec>=0.19.0",
     "networkx>=3.2",
     "sqlite-vec>=0.1.9",
 ]

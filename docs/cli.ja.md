@@ -212,20 +212,20 @@ spkt synapse remove <pre-id> <post-id> --json
 
 ## Sourceコマンド
 
-### `spkt source learn`
+### `spkt source ingest`
 
 URL・ファイル・ディレクトリを取り込みます。Sourceレコードを作成し、
 抽出したコンテンツをエージェントによるチャンキングに渡します。
 
 ```bash
 # URL
-spkt source learn "https://example.com/article" -d cs --json
+spkt source ingest "https://example.com/article" -d cs --json
 
 # ファイル
-spkt source learn ./notes.md -d math --json
+spkt source ingest ./notes.md -d math --json
 
 # ディレクトリ（一括取り込み）
-spkt source learn ./papers/ -d cs --json
+spkt source ingest ./papers/ -d cs --json
 ```
 
 | オプション | 説明 |
@@ -510,6 +510,6 @@ spkt import backup.tar.gz
 | `spkt fire` | `spkt neuron fire` |
 | `spkt due` | `spkt neuron due` |
 | `spkt link` | `spkt synapse add` |
-| `spkt learn` | `spkt source learn` |
+| `spkt learn` | `spkt source ingest` |
 | `spkt refresh` | `spkt source refresh` |
 | `spkt communities` | `spkt community list` / `spkt community detect` |

@@ -68,8 +68,8 @@ or file. Sources enable citation in answers and version tracking.
 
 ```bash
 spkt neuron add "# Key Finding" --source-url "https://paper.com" --source-title "Paper"
-spkt source learn "https://paper.com" -d cs --json    # bulk ingestion
-spkt source learn ./papers/ -d cs --json              # directory ingestion
+spkt source ingest "https://paper.com" -d cs --json    # bulk ingestion
+spkt source ingest ./papers/ -d cs --json              # directory ingestion
 ```
 
 One source can produce many neurons (1:N). Multiple neurons can share
@@ -209,7 +209,7 @@ Sessions are LLM-powered interaction modes for your Brain:
 | Session | What it does |
 |---------|-------------|
 | **QABotSession** | RAG chat — ask questions, get answers from your knowledge. Retrieval quality improves through feedback. |
-| **LearnSession** | Add knowledge through conversation — auto-discovers relations, detects duplicates. |
+| **IngestSession** | Add knowledge through conversation — auto-discovers relations, detects duplicates. |
 | **TutorSession** | AI tutor — diagnoses gaps, teaches concepts, quizzes, gives feedback. |
 
 Sessions can be **persistent** (feedback saved for future use) or

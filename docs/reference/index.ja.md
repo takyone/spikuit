@@ -8,7 +8,7 @@
 |-----------|------|
 | [Models](models.md) | Neuron, Synapse, Spike, Plasticity, Scaffold, Quizモデル |
 | [Circuit](circuit.md) | ナレッジグラフエンジン |
-| [Sessions](sessions.md) | QABotSession, LearnSession |
+| [Sessions](sessions.md) | QABotSession, IngestSession |
 | [Embedder](embedder.md) | 差し替え可能な埋め込みプロバイダー |
 | [Scaffold & Learn](scaffold.md) | スキャフォールディング算出とLearnプロトコル |
 | [Config](config.md) | Brain設定と探索 |

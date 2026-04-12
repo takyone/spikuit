@@ -13,7 +13,7 @@ from spikuit_core import (
     TutorSession,
     TutorState,
 )
-from spikuit_core.learn import Flashcard
+from spikuit_core.quiz import Flashcard
 from spikuit_core.models import Scaffold, ScaffoldLevel
 
 
@@ -34,7 +34,7 @@ async def circuit(tmp_path):
 
 
 def _make_tutor(circuit, **kwargs):
-    return TutorSession(circuit, learn=Flashcard(circuit), **kwargs)
+    return TutorSession(circuit, quiz=Flashcard(circuit), **kwargs)
 
 
 # -- start() ----------------------------------------------------------------

@@ -66,11 +66,11 @@ spkt stats
 
 ```bash
 # Ingest all text files with metadata
-spkt source learn ./papers/ -d cs --json
+spkt source ingest ./papers/ -d cs --json
 
 # With a metadata.jsonl sidecar
 echo '{"file_name": "paper1.md", "filterable": {"year": "2024"}, "searchable": {"abstract": "..."}}' > papers/metadata.jsonl
-spkt source learn ./papers/ -d cs --json
+spkt source ingest ./papers/ -d cs --json
 ```
 
 ### Filtered Retrieval
@@ -235,7 +235,7 @@ Tutor: [FEEDBACK] Exactly! `map` is specialized to lists, while `fmap`
 | Q&A | You ask a question | Pedagogical answer using your brain's knowledge |
 | Drill | Persistent weakness | Focused repetition with varied question angles |
 
-### `/spkt-teach` — Knowledge Curation
+### `/spkt-ingest` — Knowledge Curation
 
 Add knowledge through conversation. The agent structures your input,
 discovers related concepts, and creates connections.
@@ -243,7 +243,7 @@ discovers related concepts, and creates connections.
 **Example session:**
 
 ```
-> /spkt-teach
+> /spkt-ingest
 
 What would you like to add?
 
@@ -367,7 +367,7 @@ quiz = AutoQuiz(circuit, generate_fn=my_generate, grade_fn=my_grade)
 from spikuit_core import TutorSession, AutoQuiz, Flashcard
 
 # With Flashcard (no LLM needed)
-tutor = TutorSession(circuit, learn=Flashcard(circuit))
+tutor = TutorSession(circuit, quiz=Flashcard(circuit))
 
 # With AutoQuiz (LLM-powered)
 tutor = TutorSession(
@@ -399,12 +399,12 @@ results = await session.ask("functor examples in Haskell?")
 await session.close()  # commits boosts to DB
 ```
 
-### LearnSession
+### IngestSession
 
 ```python
-from spikuit_core import LearnSession, SynapseType
+from spikuit_core import IngestSession, SynapseType
 
-session = LearnSession(circuit)
+session = IngestSession(circuit)
 
 # Add knowledge — auto-discovers related concepts
 neuron, related = await session.ingest(

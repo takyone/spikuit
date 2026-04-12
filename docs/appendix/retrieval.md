@@ -20,7 +20,7 @@ score = max(keyword_sim, semantic_sim) × (1 + retrievability + centrality + pre
 Traditional RAG pipelines require significant preprocessing: document chunking,
 metadata extraction, embedding pipeline setup. Spikuit replaces this with
 conversational curation — the agent handles chunking, tagging, and connecting
-through dialogue via `/spkt-teach`.
+through dialogue via `/spkt-ingest`.
 
 ### References
 

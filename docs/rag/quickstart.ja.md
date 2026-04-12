@@ -28,8 +28,8 @@ spkt init -p openai-compat \
   --base-url http://localhost:1234/v1 \
   --model text-embedding-nomic-embed-text-v1.5
 
-spkt source learn https://ja.wikipedia.org/wiki/モナド_(圏論) -d math
-spkt source learn https://ja.wikipedia.org/wiki/関手 -d math
+spkt source ingest https://ja.wikipedia.org/wiki/モナド_(圏論) -d math
+spkt source ingest https://ja.wikipedia.org/wiki/関手 -d math
 
 spkt embed-all
 spkt stats

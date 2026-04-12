@@ -27,6 +27,7 @@ from .config import BrainConfig, EmbedderConfig, find_spikuit_root
 from .embedder import (
     Embedder,
     EmbeddingType,
+    ModelSpec,
     NullEmbedder,
     OllamaEmbedder,
     OpenAICompatEmbedder,
@@ -62,14 +63,14 @@ _ENGINE_SYMBOLS: dict[str, tuple[str, str]] = {
     "SynapseType": ("models", "SynapseType"),
     "TutorAction": ("models", "TutorAction"),
     "strip_frontmatter": ("models", "strip_frontmatter"),
-    # learn
-    "AutoQuiz": ("learn", "AutoQuiz"),
-    "Flashcard": ("learn", "Flashcard"),
-    "Learn": ("learn", "Learn"),
+    # quiz
+    "AutoQuiz": ("quiz", "AutoQuiz"),
+    "Flashcard": ("quiz", "Flashcard"),
+    "Quiz": ("quiz", "Quiz"),
     # scaffold
     "compute_scaffold": ("scaffold", "compute_scaffold"),
     # session
-    "LearnSession": ("session", "LearnSession"),
+    "IngestSession": ("session", "IngestSession"),
     "QABotSession": ("session", "QABotSession"),
     "Session": ("session", "Session"),
     # tutor
@@ -78,7 +79,24 @@ _ENGINE_SYMBOLS: dict[str, tuple[str, str]] = {
 }
 
 
+# Deprecated alias → canonical name. Removed in v0.7.
+_DEPRECATED_ALIASES: dict[str, str] = {
+    "Learn": "Quiz",
+    "LearnSession": "IngestSession",
+}
+
+
 def __getattr__(name: str) -> Any:
+    if name in _DEPRECATED_ALIASES:
+        import warnings
+
+        canonical = _DEPRECATED_ALIASES[name]
+        warnings.warn(
+            f"spikuit_core.{name} is deprecated; use spikuit_core.{canonical} instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return __getattr__(canonical)
     if name in _ENGINE_SYMBOLS:
         from importlib import import_module
 
@@ -105,7 +123,7 @@ def __dir__() -> list[str]:
 if TYPE_CHECKING:
     from .circuit import Circuit, ReadOnlyError
     from .config import init_brain, load_config
-    from .learn import AutoQuiz, Flashcard, Learn
+    from .quiz import AutoQuiz, Flashcard, Quiz
     from .models import (
         ExamResult,
         Grade,
@@ -126,7 +144,7 @@ if TYPE_CHECKING:
         strip_frontmatter,
     )
     from .scaffold import compute_scaffold
-    from .session import LearnSession, QABotSession, Session
+    from .session import IngestSession, QABotSession, Session
     from .tutor import TutorSession, TutorState
 
 
@@ -138,6 +156,7 @@ __all__ = [
     "EmbedderConfigError",
     "EmbedderSpec",
     "EmbeddingType",
+    "ModelSpec",
     "NullEmbedder",
     "OllamaEmbedder",
     "OpenAICompatEmbedder",

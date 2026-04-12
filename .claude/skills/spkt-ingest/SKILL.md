@@ -1,6 +1,6 @@
 ---
-name: spkt-teach
-description: "Teach new knowledge to the brain from the current conversation. Use when the user says /spkt-teach, 'teach this', 'add this to spikuit', '覚えて', 'ナレッジに追加', '知識追加', or similar."
+name: spkt-ingest
+description: "Teach new knowledge to the brain from the current conversation. Use when the user says /spkt-ingest, 'teach this', 'add this to spikuit', '覚えて', 'ナレッジに追加', '知識追加', or similar."
 ---
 
 # Learn — Add Knowledge to Circuit
@@ -40,7 +40,7 @@ spkt neuron add "<content>" --type <type> --domain <domain> --source-url "<url>"
 For bulk ingestion from a URL or file:
 
 ```bash
-spkt source learn "<url-or-path>" -d <domain> --json   # fetches content + creates Source
+spkt source ingest "<url-or-path>" -d <domain> --json   # fetches content + creates Source
 # then chunk the returned content into neurons with --source-url
 ```
 

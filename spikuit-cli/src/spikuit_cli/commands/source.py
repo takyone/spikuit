@@ -17,8 +17,8 @@ from ..helpers import _extract_title, _get_circuit, _load_brain_config, _out, _r
 source_app = typer.Typer(help="Manage sources.")
 
 
-@source_app.command(name="learn")
-def source_learn(
+@source_app.command(name="ingest")
+def source_ingest(
     path_or_url: str = typer.Argument(..., help="File path, directory, or URL to ingest"),
     domain: Optional[str] = typer.Option(None, "--domain", "-d", help="Domain tag"),
     title: Optional[str] = typer.Option(None, "--title", help="Source title override"),
@@ -63,6 +63,23 @@ def source_learn(
             await circuit.close()
 
     _run(_learn())
+
+
+@source_app.command(name="learn", hidden=True)
+def source_learn_deprecated(
+    path_or_url: str = typer.Argument(..., help="File path, directory, or URL to ingest"),
+    domain: Optional[str] = typer.Option(None, "--domain", "-d"),
+    title: Optional[str] = typer.Option(None, "--title"),
+    force: bool = typer.Option(False, "--force"),
+    as_json: bool = typer.Option(False, "--json"),
+    brain: Optional[Path] = typer.Option(None, "--brain", "-b"),
+) -> None:
+    """[Deprecated] Use 'spkt source ingest' instead."""
+    typer.echo(
+        "DeprecationWarning: 'spkt source learn' is deprecated; use 'spkt source ingest'",
+        err=True,
+    )
+    source_ingest(path_or_url, domain, title, force, as_json, brain)
 
 
 @source_app.command(name="list")
@@ -538,7 +555,7 @@ async def _learn_dir(
             typer.echo(f"  {r['source_id']} \u2014 {r['source_title']} ({r['content_length']} chars)")
         if meta_map:
             typer.echo(f"  metadata.jsonl: {len(meta_map)} entries applied")
-        typer.echo("\nUse the /spkt-teach agent skill to chunk content into neurons.")
+        typer.echo("\nUse the /spkt-ingest agent skill to chunk content into neurons.")
 
 
 def _emit_learn_result_from_dict(result: dict) -> None:
@@ -546,7 +563,7 @@ def _emit_learn_result_from_dict(result: dict) -> None:
     typer.echo(f"Source: {result['source_id']} ({result['source_url']})")
     typer.echo(f"Content: {result['content_length']} chars")
     typer.echo(f"Domain: {result.get('domain') or '-'}")
-    typer.echo("\nUse the /spkt-teach agent skill to chunk this content into neurons.")
+    typer.echo("\nUse the /spkt-ingest agent skill to chunk this content into neurons.")
 
 
 def _emit_learn_result(src: Source, raw: str, domain: str | None, as_json: bool) -> None:
@@ -566,4 +583,4 @@ def _emit_learn_result(src: Source, raw: str, domain: str | None, as_json: bool)
         typer.echo(f"Source: {src.id} ({src.url})")
         typer.echo(f"Content: {len(raw)} chars")
         typer.echo(f"Domain: {domain or '-'}")
-        typer.echo("\nUse the /spkt-teach agent skill to chunk this content into neurons.")
+        typer.echo("\nUse the /spkt-ingest agent skill to chunk this content into neurons.")

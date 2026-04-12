@@ -1,5 +1,5 @@
 ---
-name: spkt-teach
+name: spkt-ingest
 description: Teach knowledge to your Spikuit brain through conversation. Structures input into neurons, discovers related concepts, creates connections, and detects duplicates. Use when you want to save or organize knowledge.
 allowed-tools: Bash(spkt *)
 ---
@@ -26,7 +26,7 @@ Stats: !`spkt stats --json 2>/dev/null || echo '{}'`
 
 ### From URL or file (source ingestion)
 
-1. Fetch content: `spkt source learn "<url-or-path>" -d <domain> --json`
+1. Fetch content: `spkt source ingest "<url-or-path>" -d <domain> --json`
 2. Read the returned `content` and `source_id`
 3. Split content into atomic concepts (chunking)
 4. For each chunk: `spkt neuron add "<chunk>" -t <type> -d <domain> --source-url "<url>" --json`
@@ -114,7 +114,7 @@ Proceed? [Y/n]
 ```bash
 spkt neuron add "<content>" -t <type> -d <domain> --json
 spkt neuron add "<content>" -t <type> -d <domain> --source-url "<url>" --source-title "<title>" --json
-spkt source learn "<url-or-path>" -d <domain> --json    # fetch + create Source
+spkt source ingest "<url-or-path>" -d <domain> --json    # fetch + create Source
 spkt retrieve "<query>" --json
 spkt synapse add <a> <b> -t <type>
 spkt neuron list --json

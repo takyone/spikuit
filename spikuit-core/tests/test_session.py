@@ -1,11 +1,11 @@
-"""Tests for Session — QABotSession and LearnSession."""
+"""Tests for Session — QABotSession and IngestSession."""
 
 import pytest
 import pytest_asyncio
 
 from spikuit_core import Circuit, Neuron, Source, SynapseType
 from spikuit_core.embedder import Embedder
-from spikuit_core.session import LearnSession, QABotSession, _cosine_sim
+from spikuit_core.session import IngestSession, QABotSession, _cosine_sim
 
 
 # -- FakeEmbedder (same as test_embedder.py) ---------------------------------
@@ -60,7 +60,7 @@ async def circuit(tmp_path):
 
 @pytest_asyncio.fixture
 async def empty_circuit(tmp_path):
-    """Circuit with no neurons — for LearnSession tests."""
+    """Circuit with no neurons — for IngestSession tests."""
     emb = FakeEmbedder()
     c = Circuit(db_path=tmp_path / "learn.db", embedder=emb)
     await c.connect()
@@ -306,7 +306,7 @@ async def test_session_stats(circuit):
 
 
 # ===========================================================================
-# LearnSession
+# IngestSession
 # ===========================================================================
 
 
@@ -315,7 +315,7 @@ async def test_session_stats(circuit):
 
 @pytest.mark.asyncio
 async def test_ingest_creates_neuron(empty_circuit):
-    session = LearnSession(empty_circuit, persist=False)
+    session = IngestSession(empty_circuit, persist=False)
     neuron, related = await session.ingest(
         "# Functor\n\nA mapping between categories.",
         type="concept",
@@ -333,14 +333,14 @@ async def test_ingest_creates_neuron(empty_circuit):
 
 @pytest.mark.asyncio
 async def test_ingest_with_custom_id(empty_circuit):
-    session = LearnSession(empty_circuit, persist=False)
+    session = IngestSession(empty_circuit, persist=False)
     neuron, _ = await session.ingest("# Test", id="custom-id")
     assert neuron.id == "custom-id"
 
 
 @pytest.mark.asyncio
 async def test_ingest_returns_related_neurons(circuit):
-    session = LearnSession(circuit, persist=False)
+    session = IngestSession(circuit, persist=False)
     neuron, related = await session.ingest(
         "# Adjunction\n\nA functor pair in category theory.",
     )
@@ -353,14 +353,14 @@ async def test_ingest_returns_related_neurons(circuit):
 
 @pytest.mark.asyncio
 async def test_ingest_no_auto_relate(empty_circuit):
-    session = LearnSession(empty_circuit, persist=False, auto_relate=False)
+    session = IngestSession(empty_circuit, persist=False, auto_relate=False)
     _, related = await session.ingest("# Test concept")
     assert related == []
 
 
 @pytest.mark.asyncio
 async def test_ingest_tracks_added(empty_circuit):
-    session = LearnSession(empty_circuit, persist=False)
+    session = IngestSession(empty_circuit, persist=False)
     n1, _ = await session.ingest("# First")
     n2, _ = await session.ingest("# Second")
     assert session.stats["added"] == 2
@@ -373,7 +373,7 @@ async def test_ingest_tracks_added(empty_circuit):
 
 @pytest.mark.asyncio
 async def test_relate_creates_synapse(empty_circuit):
-    session = LearnSession(empty_circuit, persist=False)
+    session = IngestSession(empty_circuit, persist=False)
     n1, _ = await session.ingest("# Functor\n\nCategory math concept")
     n2, _ = await session.ingest("# Morphism\n\nCategory math arrow")
 
@@ -385,7 +385,7 @@ async def test_relate_creates_synapse(empty_circuit):
 
 @pytest.mark.asyncio
 async def test_relate_bidirectional(empty_circuit):
-    session = LearnSession(empty_circuit, persist=False)
+    session = IngestSession(empty_circuit, persist=False)
     n1, _ = await session.ingest("# A")
     n2, _ = await session.ingest("# B")
 
@@ -396,7 +396,7 @@ async def test_relate_bidirectional(empty_circuit):
 
 @pytest.mark.asyncio
 async def test_relate_strengthens_existing(empty_circuit):
-    session = LearnSession(empty_circuit, persist=False)
+    session = IngestSession(empty_circuit, persist=False)
     n1, _ = await session.ingest("# A")
     n2, _ = await session.ingest("# B")
 
@@ -410,7 +410,7 @@ async def test_relate_strengthens_existing(empty_circuit):
 
 @pytest.mark.asyncio
 async def test_relate_strengthen_caps_at_ceiling(empty_circuit):
-    session = LearnSession(empty_circuit, persist=False)
+    session = IngestSession(empty_circuit, persist=False)
     n1, _ = await session.ingest("# A")
     n2, _ = await session.ingest("# B")
 
@@ -421,7 +421,7 @@ async def test_relate_strengthen_caps_at_ceiling(empty_circuit):
 
 @pytest.mark.asyncio
 async def test_relate_tracks_linked(empty_circuit):
-    session = LearnSession(empty_circuit, persist=False)
+    session = IngestSession(empty_circuit, persist=False)
     n1, _ = await session.ingest("# A")
     n2, _ = await session.ingest("# B")
     await session.relate(n1.id, n2.id)
@@ -433,7 +433,7 @@ async def test_relate_tracks_linked(empty_circuit):
 
 @pytest.mark.asyncio
 async def test_search_finds_neurons(circuit):
-    session = LearnSession(circuit, persist=False)
+    session = IngestSession(circuit, persist=False)
     results = await session.search("category functor")
     assert len(results) > 0
     ids = [n.id for n in results]
@@ -442,7 +442,7 @@ async def test_search_finds_neurons(circuit):
 
 @pytest.mark.asyncio
 async def test_search_empty_query(circuit):
-    session = LearnSession(circuit, persist=False)
+    session = IngestSession(circuit, persist=False)
     results = await session.search("")
     assert results == []
 
@@ -452,7 +452,7 @@ async def test_search_empty_query(circuit):
 
 @pytest.mark.asyncio
 async def test_merge_combines_content(empty_circuit):
-    session = LearnSession(empty_circuit, persist=False)
+    session = IngestSession(empty_circuit, persist=False)
     n1, _ = await session.ingest("# Main concept", id="main")
     n2, _ = await session.ingest("# Duplicate with extra info", id="dup")
 
@@ -467,7 +467,7 @@ async def test_merge_combines_content(empty_circuit):
 
 @pytest.mark.asyncio
 async def test_merge_transfers_synapses(empty_circuit):
-    session = LearnSession(empty_circuit, persist=False)
+    session = IngestSession(empty_circuit, persist=False)
     n1, _ = await session.ingest("# Target", id="target")
     n2, _ = await session.ingest("# Source", id="source")
     n3, _ = await session.ingest("# Related", id="related")
@@ -485,7 +485,7 @@ async def test_merge_transfers_synapses(empty_circuit):
 
 @pytest.mark.asyncio
 async def test_merge_transfers_incoming_synapses(empty_circuit):
-    session = LearnSession(empty_circuit, persist=False)
+    session = IngestSession(empty_circuit, persist=False)
     n1, _ = await session.ingest("# Target", id="target")
     n2, _ = await session.ingest("# Source", id="source")
     n3, _ = await session.ingest("# Prereq", id="prereq")
@@ -501,14 +501,14 @@ async def test_merge_transfers_incoming_synapses(empty_circuit):
 
 @pytest.mark.asyncio
 async def test_merge_nonexistent_target_raises(empty_circuit):
-    session = LearnSession(empty_circuit, persist=False)
+    session = IngestSession(empty_circuit, persist=False)
     with pytest.raises(ValueError, match="not found"):
         await session.merge(["whatever"], "nonexistent")
 
 
 @pytest.mark.asyncio
 async def test_merge_skips_self(empty_circuit):
-    session = LearnSession(empty_circuit, persist=False)
+    session = IngestSession(empty_circuit, persist=False)
     n1, _ = await session.ingest("# Self", id="self")
 
     # Merge self into self should not crash or duplicate content
@@ -518,7 +518,7 @@ async def test_merge_skips_self(empty_circuit):
 
 @pytest.mark.asyncio
 async def test_merge_tracks_stats(empty_circuit):
-    session = LearnSession(empty_circuit, persist=False)
+    session = IngestSession(empty_circuit, persist=False)
     await session.ingest("# A", id="a")
     await session.ingest("# B", id="b")
     await session.merge(["b"], "a")
@@ -530,7 +530,7 @@ async def test_merge_tracks_stats(empty_circuit):
 
 @pytest.mark.asyncio
 async def test_learn_session_reset(empty_circuit):
-    session = LearnSession(empty_circuit, persist=False)
+    session = IngestSession(empty_circuit, persist=False)
     await session.ingest("# A")
     assert session.stats["added"] == 1
 
@@ -542,7 +542,7 @@ async def test_learn_session_reset(empty_circuit):
 
 @pytest.mark.asyncio
 async def test_learn_session_close(empty_circuit):
-    session = LearnSession(empty_circuit, persist=False)
+    session = IngestSession(empty_circuit, persist=False)
     await session.ingest("# A")
     await session.close()
     assert session.stats["added"] == 0
@@ -554,7 +554,7 @@ async def test_learn_session_close(empty_circuit):
 @pytest.mark.asyncio
 async def test_ingest_with_source_meta(empty_circuit):
     """ingest() with source_meta creates and attaches Source."""
-    session = LearnSession(empty_circuit, persist=False)
+    session = IngestSession(empty_circuit, persist=False)
     src = Source(url="https://example.com/paper.pdf", title="A Paper")
     neuron, _ = await session.ingest(
         "# Key Finding\n\nSomething important.",
@@ -569,7 +569,7 @@ async def test_ingest_with_source_meta(empty_circuit):
 @pytest.mark.asyncio
 async def test_ingest_source_dedup_by_url(empty_circuit):
     """Multiple ingests with same source URL should reuse the Source."""
-    session = LearnSession(empty_circuit, persist=False)
+    session = IngestSession(empty_circuit, persist=False)
     src1 = Source(url="https://example.com/paper.pdf", title="Paper")
     src2 = Source(url="https://example.com/paper.pdf", title="Paper v2")
 
@@ -585,7 +585,7 @@ async def test_ingest_source_dedup_by_url(empty_circuit):
 @pytest.mark.asyncio
 async def test_ingest_without_source_meta(empty_circuit):
     """ingest() without source_meta should not create Source."""
-    session = LearnSession(empty_circuit, persist=False)
+    session = IngestSession(empty_circuit, persist=False)
     neuron, _ = await session.ingest("# No Source")
     sources = await empty_circuit.get_sources_for_neuron(neuron.id)
     assert len(sources) == 0

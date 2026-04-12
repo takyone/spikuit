@@ -67,8 +67,8 @@ Next steps for study mode:
 _RAG_NEXT_STEPS = """\
 Next steps for RAG mode:
   1. Ingest sources:
-       spkt source learn https://example.com/article -d <domain>
-       spkt source learn ./paper.pdf -d <domain>
+       spkt source ingest https://example.com/article -d <domain>
+       spkt source ingest ./paper.pdf -d <domain>
   2. Backfill embeddings if you skipped the embedder above:
        spkt embed-all
   3. Query the brain:
@@ -1426,7 +1426,7 @@ _DEPRECATION_MAP = {
     "link": "synapse add",
     "inspect": "neuron inspect",
     "communities": "community list/detect",
-    "learn": "source learn",
+    "learn": "source ingest",
     "refresh": "source refresh",
 }
 
@@ -1443,7 +1443,7 @@ from .commands.neuron import (
     neuron_inspect,
     neuron_list,
 )
-from .commands.source import source_learn, source_refresh
+from .commands.source import source_ingest, source_refresh
 from .commands.synapse import synapse_add
 
 
@@ -1558,9 +1558,9 @@ def learn_deprecated(
     as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
     brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
 ) -> None:
-    """[Deprecated] Use 'spkt source learn' instead."""
+    """[Deprecated] Use 'spkt source ingest' instead."""
     _deprecation_warning("learn")
-    source_learn(path_or_url=path_or_url, domain=domain, title=title, force=force, as_json=as_json, brain=brain)
+    source_ingest(path_or_url=path_or_url, domain=domain, title=title, force=force, as_json=as_json, brain=brain)
 
 
 @app.command(name="refresh", hidden=True)

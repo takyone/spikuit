@@ -1,4 +1,4 @@
-# /spkt-teach — Knowledge Curation Session
+# /spkt-ingest — Knowledge Curation Session
 
 Ingest new knowledge, discover connections, and curate the graph.
 
@@ -22,7 +22,7 @@ Ingest new knowledge, discover connections, and curate the graph.
 ### Source Ingestion from URL/File
 
 For bulk content from a URL or file:
-1. **Fetch**: `spkt source learn "<url-or-path>" -d <domain> --json` — creates Source, returns content
+1. **Fetch**: `spkt source ingest "<url-or-path>" -d <domain> --json` — creates Source, returns content
 2. **Chunk**: Split the returned content into atomic concepts
 3. **Add each chunk**: `spkt neuron add "<chunk>" --source-url "<url>" --json` — auto-attaches Source
 4. **Re-detect communities**: `spkt community detect` after major ingestion
@@ -104,7 +104,7 @@ highlights), process them in a batch:
 ## Example Session
 
 ```
-> /spkt-teach
+> /spkt-ingest
 
 What would you like to add to your brain?
 
@@ -170,7 +170,7 @@ Proceed? [Y/n]
 ```bash
 spkt neuron add "<content>" -t <type> -d <domain> --json                   # Add neuron
 spkt neuron add "<content>" -t <type> --source-url "<url>" --json          # Add with source
-spkt source learn "<url-or-path>" -d <domain> --json                       # Fetch + create Source
+spkt source ingest "<url-or-path>" -d <domain> --json                       # Fetch + create Source
 spkt retrieve "<query>" --json                                      # Find related
 spkt synapse add <a> <b> -t <type>                                         # Create synapse
 spkt neuron list --json                                                    # List existing neurons

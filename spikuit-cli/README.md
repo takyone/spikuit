@@ -30,7 +30,7 @@ spkt init -p openai-compat \
   --model text-embedding-nomic-embed-text-v1.5
 
 # Ingest a source
-spkt source learn https://en.wikipedia.org/wiki/Monad_(category_theory) -d math
+spkt source ingest https://en.wikipedia.org/wiki/Monad_(category_theory) -d math
 
 # Search the graph
 spkt retrieve "What is a monad?"

@@ -110,10 +110,10 @@ spkt embed-all
 
 ```bash
 # Ingest a URL
-spkt source learn "https://example.com/article" -d cs --json
+spkt source ingest "https://example.com/article" -d cs --json
 
 # Ingest a directory of files
-spkt source learn ./papers/ -d cs --json
+spkt source ingest ./papers/ -d cs --json
 ```
 
 ## Visualize

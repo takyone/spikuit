@@ -29,8 +29,8 @@ spkt init -p openai-compat \
   --base-url http://localhost:1234/v1 \
   --model text-embedding-nomic-embed-text-v1.5
 
-spkt source learn https://en.wikipedia.org/wiki/Monad_(category_theory) -d math
-spkt source learn https://en.wikipedia.org/wiki/Functor -d math
+spkt source ingest https://en.wikipedia.org/wiki/Monad_(category_theory) -d math
+spkt source ingest https://en.wikipedia.org/wiki/Functor -d math
 
 spkt embed-all
 spkt stats

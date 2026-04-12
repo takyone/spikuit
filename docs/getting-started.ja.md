@@ -109,10 +109,10 @@ spkt embed-all
 
 ```bash
 # URLから取り込み
-spkt source learn "https://example.com/article" -d cs --json
+spkt source ingest "https://example.com/article" -d cs --json
 
 # ディレクトリごと一括取り込み
-spkt source learn ./papers/ -d cs --json
+spkt source ingest ./papers/ -d cs --json
 ```
 
 ## 可視化

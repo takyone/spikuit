@@ -66,11 +66,11 @@ spkt stats
 
 ```bash
 # テキストファイルをまとめて取り込み
-spkt source learn ./papers/ -d cs --json
+spkt source ingest ./papers/ -d cs --json
 
 # metadata.jsonlでメタデータを付与
 echo '{"file_name": "paper1.md", "filterable": {"year": "2024"}, "searchable": {"abstract": "..."}}' > papers/metadata.jsonl
-spkt source learn ./papers/ -d cs --json
+spkt source ingest ./papers/ -d cs --json
 ```
 
 ### フィルタ付き検索
@@ -236,7 +236,7 @@ Tutor: [フィードバック] その通り！`map`はリスト特化で、
 | Q&A | 質問されたとき | Brainの知識を使った教育的な回答 |
 | ドリル | 弱点が続くとき | 角度を変えた反復練習 |
 
-### `/spkt-teach` — ナレッジキュレーション
+### `/spkt-ingest` — ナレッジキュレーション
 
 会話しながら知識を追加。エージェントが内容を構造化し、
 関連する概念を見つけ、つなげてくれます。
@@ -244,7 +244,7 @@ Tutor: [フィードバック] その通り！`map`はリスト特化で、
 **セッション例：**
 
 ```
-> /spkt-teach
+> /spkt-ingest
 
 何を追加しますか？
 
@@ -356,7 +356,7 @@ quiz = AutoQuiz(circuit, generate_fn=my_generate, grade_fn=my_grade)
 from spikuit_core import TutorSession, AutoQuiz, Flashcard
 
 # Flashcard（LLM不要）
-tutor = TutorSession(circuit, learn=Flashcard(circuit))
+tutor = TutorSession(circuit, quiz=Flashcard(circuit))
 
 # AutoQuiz（LLM連携）
 tutor = TutorSession(
@@ -388,12 +388,12 @@ results = await session.ask("Haskellでのfunctorの例は？")
 await session.close()  # ブーストをDBに反映
 ```
 
-### LearnSession
+### IngestSession
 
 ```python
-from spikuit_core import LearnSession, SynapseType
+from spikuit_core import IngestSession, SynapseType
 
-session = LearnSession(circuit)
+session = IngestSession(circuit)
 
 # 知識を追加 — 関連する概念を自動で探してくれる
 neuron, related = await session.ingest(

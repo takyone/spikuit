@@ -40,7 +40,7 @@ After `spkt skills install`, agents get four skills:
 
 - `/spkt-tutor` — 1-on-1 scaffolded teaching, quizzes, gap detection
 - `/spkt-qabot` — RAG chat grounded in the knowledge graph
-- `/spkt-teach` — add knowledge through conversational curation
+- `/spkt-ingest` — add knowledge through conversational curation
 - `/spkt-curator` — brain maintenance: audit, consolidation, cleanup
 
 ## Key Docs

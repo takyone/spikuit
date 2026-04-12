@@ -119,10 +119,10 @@ spkt embed-all
 
 ```bash
 # Ingest a URL
-spkt source learn "https://example.com/article" -d cs --json
+spkt source ingest "https://example.com/article" -d cs --json
 
 # Ingest a directory of files
-spkt source learn ./papers/ -d cs --json
+spkt source ingest ./papers/ -d cs --json
 ```
 
 ## Visualize
@@ -233,8 +233,8 @@ or file. Sources enable citation in answers and version tracking.
 
 ```bash
 spkt neuron add "# Key Finding" --source-url "https://paper.com" --source-title "Paper"
-spkt source learn "https://paper.com" -d cs --json    # bulk ingestion
-spkt source learn ./papers/ -d cs --json              # directory ingestion
+spkt source ingest "https://paper.com" -d cs --json    # bulk ingestion
+spkt source ingest ./papers/ -d cs --json              # directory ingestion
 ```
 
 One source can produce many neurons (1:N). Multiple neurons can share
@@ -374,7 +374,7 @@ Sessions are LLM-powered interaction modes for your Brain:
 | Session | What it does |
 |---------|-------------|
 | **QABotSession** | RAG chat — ask questions, get answers from your knowledge. Retrieval quality improves through feedback. |
-| **LearnSession** | Add knowledge through conversation — auto-discovers relations, detects duplicates. |
+| **IngestSession** | Add knowledge through conversation — auto-discovers relations, detects duplicates. |
 | **TutorSession** | AI tutor — diagnoses gaps, teaches concepts, quizzes, gives feedback. |
 
 Sessions can be **persistent** (feedback saved for future use) or
@@ -649,20 +649,20 @@ spkt synapse remove <pre-id> <post-id> --json
 
 ## Source Commands
 
-### `spkt source learn`
+### `spkt source ingest`
 
 Ingest a URL, file, or directory. Creates Source records, extracts content,
 and outputs it for agent-driven chunking.
 
 ```bash
 # Single URL
-spkt source learn "https://example.com/article" -d cs --json
+spkt source ingest "https://example.com/article" -d cs --json
 
 # Single file
-spkt source learn ./notes.md -d math --json
+spkt source ingest ./notes.md -d math --json
 
 # Directory (batch ingestion)
-spkt source learn ./papers/ -d cs --json
+spkt source ingest ./papers/ -d cs --json
 ```
 
 | Option | Description |
@@ -947,7 +947,7 @@ Use the resource-oriented form above.
 | `spkt fire` | `spkt neuron fire` |
 | `spkt due` | `spkt neuron due` |
 | `spkt link` | `spkt synapse add` |
-| `spkt learn` | `spkt source learn` |
+| `spkt learn` | `spkt source ingest` |
 | `spkt refresh` | `spkt source refresh` |
 | `spkt communities` | `spkt community list` / `spkt community detect` |
 
@@ -1021,11 +1021,11 @@ spkt stats
 
 ```bash
 # Ingest all text files with metadata
-spkt source learn ./papers/ -d cs --json
+spkt source ingest ./papers/ -d cs --json
 
 # With a metadata.jsonl sidecar
 echo '{"file_name": "paper1.md", "filterable": {"year": "2024"}, "searchable": {"abstract": "..."}}' > papers/metadata.jsonl
-spkt source learn ./papers/ -d cs --json
+spkt source ingest ./papers/ -d cs --json
 ```
 
 ### Filtered Retrieval
@@ -1190,7 +1190,7 @@ Tutor: [FEEDBACK] Exactly! `map` is specialized to lists, while `fmap`
 | Q&A | You ask a question | Pedagogical answer using your brain's knowledge |
 | Drill | Persistent weakness | Focused repetition with varied question angles |
 
-### `/spkt-teach` — Knowledge Curation
+### `/spkt-ingest` — Knowledge Curation
 
 Add knowledge through conversation. The agent structures your input,
 discovers related concepts, and creates connections.
@@ -1198,7 +1198,7 @@ discovers related concepts, and creates connections.
 **Example session:**
 
 ```
-> /spkt-teach
+> /spkt-ingest
 
 What would you like to add?
 
@@ -1322,7 +1322,7 @@ quiz = AutoQuiz(circuit, generate_fn=my_generate, grade_fn=my_grade)
 from spikuit_core import TutorSession, AutoQuiz, Flashcard
 
 # With Flashcard (no LLM needed)
-tutor = TutorSession(circuit, learn=Flashcard(circuit))
+tutor = TutorSession(circuit, quiz=Flashcard(circuit))
 
 # With AutoQuiz (LLM-powered)
 tutor = TutorSession(
@@ -1354,12 +1354,12 @@ results = await session.ask("functor examples in Haskell?")
 await session.close()  # commits boosts to DB
 ```
 
-### LearnSession
+### IngestSession
 
 ```python
-from spikuit_core import LearnSession, SynapseType
+from spikuit_core import IngestSession, SynapseType
 
-session = LearnSession(circuit)
+session = IngestSession(circuit)
 
 # Add knowledge — auto-discovers related concepts
 neuron, related = await session.ingest(
@@ -1506,7 +1506,7 @@ In Spikuit: `consolidate` runs a 4-phase plan: Triage (classify synapses) → SH
 
 - Schemas = mental frameworks that organize knowledge (Bartlett, 1932; Piaget)
 - New info is easier to learn when it connects to existing schemas
-- In Spikuit: the knowledge graph *is* the schema; `LearnSession.ingest()` auto-discovers related concepts
+- In Spikuit: the knowledge graph *is* the schema; `IngestSession.ingest()` auto-discovers related concepts
 
 ### References
 
@@ -1582,7 +1582,7 @@ score = max(keyword_sim, semantic_sim) × (1 + retrievability + centrality + pre
 Traditional RAG pipelines require significant preprocessing: document chunking,
 metadata extraction, embedding pipeline setup. Spikuit replaces this with
 conversational curation — the agent handles chunking, tagging, and connecting
-through dialogue via `/spkt-teach`.
+through dialogue via `/spkt-ingest`.
 
 ### References
 

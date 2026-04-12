@@ -66,8 +66,8 @@ spkt neuron add "# Functor\n\n圏の間の構造を保つ写像。" -t concept -
 
 ```bash
 spkt neuron add "# 重要な発見" --source-url "https://paper.com" --source-title "論文"
-spkt source learn "https://paper.com" -d cs --json    # URL取り込み
-spkt source learn ./papers/ -d cs --json              # ディレクトリ一括取り込み
+spkt source ingest "https://paper.com" -d cs --json    # URL取り込み
+spkt source ingest ./papers/ -d cs --json              # ディレクトリ一括取り込み
 ```
 
 1つのSourceから複数のNeuronが生まれることもあれば（1:N）、
@@ -203,7 +203,7 @@ Brainを使ったLLM連携の対話モードです:
 | セッション | できること |
 |-----------|----------|
 | **QABotSession** | RAGチャット — 知識ベースに聞いて、ソース付きで回答。使うほど検索精度が向上。 |
-| **LearnSession** | 会話で知識を追加 — 関連概念の自動発見、重複チェック付き。 |
+| **IngestSession** | 会話で知識を追加 — 関連概念の自動発見、重複チェック付き。 |
 | **TutorSession** | AIチューター — 弱点を見つけて教え、クイズし、フィードバックまで。 |
 
 セッションは**永続**（フィードバックを次回以降に活かす）と

@@ -1,6 +1,6 @@
 """TutorSession — 1-on-1 scaffolded tutoring session.
 
-Uses a Learn strategy (AutoQuiz or Flashcard) internally to generate
+Uses a Quiz strategy (AutoQuiz or Flashcard) internally to generate
 questions and evaluate answers, adding hint progression, gap detection,
 and retry logic on top.
 
@@ -14,8 +14,8 @@ from typing import TYPE_CHECKING
 
 import msgspec
 
-from .learn import Learn
 from .models import Grade, QuizItem, Scaffold
+from .quiz import Quiz
 from .scaffold import compute_scaffold
 
 if TYPE_CHECKING:
@@ -49,13 +49,13 @@ class TutorSession:
 
     Args:
         circuit: The knowledge graph engine.
-        learn: Learn strategy to use (AutoQuiz, Flashcard, etc.).
+        quiz: Quiz strategy to use (AutoQuiz, Flashcard, etc.).
         persist: Whether to commit results on close.
         max_attempts: Max answer attempts before revealing the answer.
 
     Example:
         ```python
-        tutor = TutorSession(circuit, learn=AutoQuiz(circuit))
+        tutor = TutorSession(circuit, quiz=AutoQuiz(circuit))
         queue = await tutor.start(limit=5)
 
         state = await tutor.teach()       # present first question
@@ -71,12 +71,12 @@ class TutorSession:
         self,
         circuit: Circuit,
         *,
-        learn: Learn,
+        quiz: Quiz,
         persist: bool = True,
         max_attempts: int = 3,
     ) -> None:
         self.circuit = circuit
-        self.learn = learn
+        self.quiz = quiz
         self.persist = persist
         self.max_attempts = max_attempts
 
@@ -95,7 +95,7 @@ class TutorSession:
         """Build the tutoring queue.
 
         If ``neuron_ids`` is provided, uses those. Otherwise selects
-        due neurons via the Learn strategy. Weak prerequisites (gaps)
+        due neurons via the Quiz strategy. Weak prerequisites (gaps)
         are inserted before their dependents.
 
         Args:
@@ -108,7 +108,7 @@ class TutorSession:
         if neuron_ids is not None:
             ids = list(neuron_ids)
         else:
-            ids = await self.learn.select(limit=limit)
+            ids = await self.quiz.select(limit=limit)
 
         # Expand gaps: insert weak prerequisites before their dependents
         expanded: list[str] = []
@@ -142,7 +142,7 @@ class TutorSession:
 
         neuron_id = self._queue.pop(0)
         scaffold = compute_scaffold(self.circuit, neuron_id)
-        item = await self.learn.present(neuron_id, scaffold)
+        item = await self.quiz.present(neuron_id, scaffold)
 
         self._current = TutorState(
             neuron_id=neuron_id,
@@ -177,7 +177,7 @@ class TutorSession:
         state = self._current
         state.attempts += 1
 
-        grade = await self.learn.evaluate(state.neuron_id, state.item, answer)
+        grade = await self.quiz.evaluate(state.neuron_id, state.item, answer)
         state.grade = grade
 
         if grade >= Grade.FIRE:
@@ -268,7 +268,7 @@ class TutorSession:
     async def _finalize(self, state: TutorState, grade: Grade) -> None:
         """Record the grade and move state to history."""
         state.grade = grade
-        await self.learn.record(state.neuron_id, grade)
+        await self.quiz.record(state.neuron_id, grade)
         self._history.append(state)
         if self._current is state:
             self._current = None
