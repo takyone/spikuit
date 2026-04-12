@@ -1,0 +1,29 @@
+# Template manifest. Copy this directory to create a new extractor:
+#   spkt skills extractor fork _template my-extractor
+# (or) cp -r _template/ <BRAIN>/.spikuit/extractors/my-extractor/
+#
+# Then edit name / description / match / requires below.
+
+[extractor]
+name = "_template"
+version = "0.0.0"
+description = "Skeleton extractor — copy and edit."
+author = ""
+
+[match]
+# At least one of these should be non-empty for the extractor to be routable.
+# file_patterns: glob patterns matched against the input path's basename
+#   e.g. ["*.py", "pyproject.toml"]
+# url_patterns: substring patterns matched against the input URL
+#   e.g. ["arxiv.org/abs/", "github.com/"]
+# content_keywords: substring matched against a peek of the input content
+#   e.g. ["\\documentclass", "import torch"]
+file_patterns = []
+url_patterns = []
+content_keywords = []
+
+[requires]
+# External CLI commands that must be on PATH for the extractor to run.
+commands = []
+# Python packages that must be importable.
+python_packages = []

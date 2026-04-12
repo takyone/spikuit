@@ -198,6 +198,13 @@ All commands support `--json` for machine-readable output and `--brain` to targe
 | `spkt community list` | Show community assignments |
 | `spkt skills install` | Install SKILL.md for Agent CLIs |
 | `spkt skills list` | List available skills |
+| `spkt skills extractor list` | List ingestion extractors (system + brain tier) |
+| `spkt skills extractor status` | Check extractor runtime requirements |
+| `spkt skills extractor show <name>` | Print extractor manifest + SKILL.md |
+| `spkt skills extractor fork <name>` | Copy system extractor → brain (shadcn-style) |
+| `spkt skills extractor add <path>` | Install external extractor directory into brain |
+| `spkt skills extractor remove <name>` | Delete brain-local extractor |
+| `spkt skills extractor refresh` | Regenerate brain `_registry.toml` |
 
 Old flat commands (`spkt add`, `spkt fire`, etc.) still work with deprecation warnings. Use the resource-oriented form above.
 

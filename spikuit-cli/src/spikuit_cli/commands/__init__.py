@@ -2,16 +2,20 @@
 
 from .community import community_app
 from .domain import domain_app
+from .extractor import extractor_app
 from .git import branch_app, history_cmd, undo_cmd
 from .neuron import neuron_app
 from .skills import skills_app
 from .source import source_app
 from .synapse import synapse_app
 
+skills_app.add_typer(extractor_app, name="extractor")
+
 __all__ = [
     "branch_app",
     "community_app",
     "domain_app",
+    "extractor_app",
     "history_cmd",
     "neuron_app",
     "skills_app",

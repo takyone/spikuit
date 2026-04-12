@@ -934,6 +934,78 @@ Import a tarball backup.
 spkt import backup.tar.gz
 ```
 
+## Extractors (`spkt skills extractor`)
+
+Extractors are pluggable ingestion strategies — each is a `SKILL.md` +
+`manifest.toml` bundle that an Agent CLI invokes during `spkt source ingest`.
+They live in two tiers, with brain-local shadowing system on name collision
+(shadcn-style):
+
+```
+1. <BRAIN>/.spikuit/extractors/<name>/                       (brain, wins)
+2. <spkt-install>/skills/spkt-ingest/extractors/<name>/      (system)
+```
+
+Spikuit ships with a `default` extractor (generic markdown chunker) and a
+`_template/` skeleton for new extractors.
+
+### `spkt skills extractor list`
+
+Show all resolved extractors and which tier they came from.
+
+```bash
+spkt skills extractor list
+spkt skills extractor list --json
+```
+
+### `spkt skills extractor status`
+
+Probe each extractor's `[requires]` section against the host environment
+(commands on PATH, importable Python packages). Use this to decide whether
+an extractor can run, or whether the user needs to install something first.
+
+```bash
+spkt skills extractor status              # all extractors
+spkt skills extractor status pdf-paper    # one
+spkt skills extractor status --json
+```
+
+JSON output:
+
+```json
+[
+  {"name": "default", "available": true, "missing_commands": [], "missing_python_packages": []},
+  {"name": "pdf-paper", "available": false, "missing_commands": [], "missing_python_packages": ["pymupdf"]}
+]
+```
+
+### `spkt skills extractor show <name>`
+
+Print the manifest plus the full SKILL.md for one extractor.
+
+### `spkt skills extractor fork <name> [<new-name>]`
+
+Copy a system extractor into the brain so you can edit it. Omit `<new-name>`
+to keep the same name and shadow the system version.
+
+```bash
+spkt skills extractor fork default               # shadow system default
+spkt skills extractor fork default my-default    # new brain-local name
+```
+
+### `spkt skills extractor add <path>`
+
+Install an external extractor directory (must contain `manifest.toml` +
+`SKILL.md`) into the brain.
+
+### `spkt skills extractor remove <name>`
+
+Delete a brain-local extractor. System extractors cannot be removed.
+
+### `spkt skills extractor refresh`
+
+Regenerate `<brain>/.spikuit/extractors/_registry.toml` after manual edits.
+
 ## Versioning (Git-backed)
 
 `spkt init` creates a git repository inside the brain so every change is

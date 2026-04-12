@@ -1,0 +1,15 @@
+[extractor]
+name = "default"
+version = "0.1.0"
+description = "Generic markdown ingestion — atomic concept chunking. The fallback used when no specific extractor matches."
+author = "spikuit"
+
+[match]
+# Empty patterns = match anything as a last-resort fallback.
+file_patterns = []
+url_patterns = []
+content_keywords = []
+
+[requires]
+commands = []
+python_packages = []

@@ -497,6 +497,78 @@ tarballバックアップをインポートします。
 spkt import backup.tar.gz
 ```
 
+## エクストラクタ（`spkt skills extractor`）
+
+エクストラクタはプラガブルな取り込み戦略です。各エクストラクタは
+`SKILL.md` + `manifest.toml` のバンドルで、`spkt source ingest` の中で
+Agent CLI から呼び出されます。エクストラクタは2層構造で、ブランド内エント
+リがシステム同名を上書きします（shadcn-style）：
+
+```
+1. <BRAIN>/.spikuit/extractors/<name>/                       (brain, 優先)
+2. <spkt-install>/skills/spkt-ingest/extractors/<name>/      (system)
+```
+
+Spikuit は `default` エクストラクタ（汎用 markdown チャンカ）と
+`_template/` スケルトンを同梱しています。
+
+### `spkt skills extractor list`
+
+解決済みエクストラクタとそのティアを一覧表示します。
+
+```bash
+spkt skills extractor list
+spkt skills extractor list --json
+```
+
+### `spkt skills extractor status`
+
+各エクストラクタの `[requires]` をホスト環境（PATH 上のコマンド、import 可能な
+Python パッケージ）に対して検査します。実行可能か、ユーザーに何かインストール
+してもらう必要があるかを判断するのに使います。
+
+```bash
+spkt skills extractor status              # 全件
+spkt skills extractor status pdf-paper    # 単体
+spkt skills extractor status --json
+```
+
+JSON出力:
+
+```json
+[
+  {"name": "default", "available": true, "missing_commands": [], "missing_python_packages": []},
+  {"name": "pdf-paper", "available": false, "missing_commands": [], "missing_python_packages": ["pymupdf"]}
+]
+```
+
+### `spkt skills extractor show <name>`
+
+manifest と SKILL.md 全文を表示します。
+
+### `spkt skills extractor fork <name> [<new-name>]`
+
+システムエクストラクタを brain にコピーして編集可能にします。`<new-name>` を
+省略すると同名のままシステム版を上書きします。
+
+```bash
+spkt skills extractor fork default               # システムdefaultを上書き
+spkt skills extractor fork default my-default    # 別名で複製
+```
+
+### `spkt skills extractor add <path>`
+
+外部のエクストラクタディレクトリ（`manifest.toml` + `SKILL.md` 必須）を
+brain にインストールします。
+
+### `spkt skills extractor remove <name>`
+
+brain-local エクストラクタを削除します。システム同梱のものは削除できません。
+
+### `spkt skills extractor refresh`
+
+手動編集後に `<brain>/.spikuit/extractors/_registry.toml` を再生成します。
+
 ## バージョン管理（gitバックエンド）
 
 `spkt init` はBrain内にgitリポジトリを作成し、変更を全て履歴に残します。
