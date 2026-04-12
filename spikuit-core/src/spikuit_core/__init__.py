@@ -25,6 +25,7 @@ from .models import (
     strip_frontmatter,
 )
 from .learn import AutoQuiz, Flashcard, Learn
+from .rag import QABot
 from .scaffold import compute_scaffold
 from .session import LearnSession, QABotSession, Session
 from .tutor import TutorSession, TutorState
@@ -61,6 +62,7 @@ __all__ = [
     "NullEmbedder",
     "OllamaEmbedder",
     "OpenAICompatEmbedder",
+    "QABot",
     "QABotSession",
     "Session",
 ]
