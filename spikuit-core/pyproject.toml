@@ -1,10 +1,21 @@
 [project]
 name = "spikuit-core"
-version = "0.5.5"
+version = "0.5.6"
 description = "Core engine: FSRS scheduling + Knowledge Graph + Spreading Activation"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Education",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Education",
+]
 dependencies = [
     "httpx>=0.28.1",
     "numpy>=1.26.0",

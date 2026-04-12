@@ -1,10 +1,22 @@
 [project]
 name = "spikuit-cli"
-version = "0.5.5"
+version = "0.5.6"
 description = "CLI interface for Spikuit (spkt command)"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Education",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Education",
+]
 dependencies = [
     "pyvis>=0.3.2",
     "spikuit-core[engine]",
