@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import subprocess
 from pathlib import Path
 
 import typer
@@ -91,3 +92,84 @@ _GRADE_MAP = {
     "fire": Grade.FIRE,
     "strong": Grade.STRONG,
 }
+
+
+# -- Git integration --------------------------------------------------------
+
+
+def _brain_root(brain: Path | None = None) -> Path:
+    """Resolve the Brain root directory (parent of .spikuit/)."""
+    return _load_brain_config(brain).root
+
+
+def _is_git_repo(brain: Path | None = None) -> bool:
+    """Whether the Brain root has a git repository initialized."""
+    root = _brain_root(brain)
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--git-dir"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        return False
+    return result.returncode == 0
+
+
+def _git(
+    *args: str,
+    brain: Path | None = None,
+    check: bool = True,
+    capture: bool = False,
+) -> subprocess.CompletedProcess:
+    """Run a git command in the Brain root.
+
+    Raises typer.Exit on failure when ``check`` is True.
+    """
+    root = _brain_root(brain)
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), *args],
+            capture_output=capture,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError as e:
+        typer.echo(f"git not found on PATH: {e}", err=True)
+        raise typer.Exit(1) from e
+    if check and result.returncode != 0:
+        if capture and result.stderr:
+            typer.echo(result.stderr, err=True)
+        raise typer.Exit(result.returncode)
+    return result
+
+
+def _git_auto_commit_enabled(brain: Path | None = None) -> bool:
+    """Whether the Brain has [git] auto_commit = true (default)."""
+    config = _load_brain_config(brain)
+    git_cfg = getattr(config, "git", None)
+    if git_cfg is None:
+        return True
+    return bool(getattr(git_cfg, "auto_commit", True))
+
+
+def _current_branch(brain: Path | None = None) -> str:
+    """Return the current git branch name."""
+    result = _git("rev-parse", "--abbrev-ref", "HEAD", brain=brain, capture=True)
+    return result.stdout.strip()
+
+
+GITIGNORE_TEMPLATE = """\
+# Spikuit Brain — recommended .gitignore
+# Track: circuit.db, config.toml
+# Ignore: ephemeral cache, lockfiles, exports
+
+.spikuit/cache/
+.spikuit/*.lock
+.spikuit/*.tmp
+
+# Exports are portable archives — regenerate with `spkt export`
+exports/
+*.tar.gz
+"""

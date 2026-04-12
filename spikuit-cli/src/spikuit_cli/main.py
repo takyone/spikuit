@@ -15,13 +15,17 @@ from spikuit_core.config import BrainConfig, find_spikuit_root, init_brain, load
 from spikuit_core.embedder import create_embedder
 
 from .commands import (
+    branch_app,
     community_app,
     domain_app,
+    history_cmd,
     neuron_app,
     skills_app,
     source_app,
     synapse_app,
+    undo_cmd,
 )
+from .commands.git import write_gitignore
 from .commands.skills import install_agent_skills
 from .helpers import (
     _GRADE_MAP,
@@ -46,6 +50,9 @@ app.add_typer(source_app, name="source")
 app.add_typer(domain_app, name="domain")
 app.add_typer(community_app, name="community")
 app.add_typer(skills_app, name="skills")
+app.add_typer(branch_app, name="branch")
+app.command(name="history")(history_cmd)
+app.command(name="undo")(undo_cmd)
 
 
 # -------------------------------------------------------------------
@@ -97,6 +104,7 @@ def init(
     model: str = typer.Option("", "--model", "-m", help="Embedding model name"),
     dimension: int = typer.Option(768, "--dimension", "-d", help="Embedding dimension"),
     mode: Optional[str] = typer.Option(None, "--mode", help="Onboarding mode: study|rag (affects next-step guidance only)"),
+    git: bool = typer.Option(True, "--git/--no-git", help="Initialize a git repository for Brain version control (default: yes)"),
     as_json: bool = typer.Option(False, "--json", help="Non-interactive JSON output"),
 ) -> None:
     """Initialize a new brain in the current directory.
@@ -174,6 +182,43 @@ def init(
         typer.echo(".spikuit/ already exists in this directory.", err=True)
         raise typer.Exit(1)
 
+    git_initialized = False
+    if git:
+        import subprocess
+
+        write_gitignore(config.root)
+        existing = subprocess.run(
+            ["git", "-C", str(config.root), "rev-parse", "--git-dir"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if existing.returncode != 0:
+            try:
+                subprocess.run(
+                    ["git", "-C", str(config.root), "init", "-q", "-b", "main"],
+                    check=True,
+                )
+                subprocess.run(
+                    ["git", "-C", str(config.root), "add", ".gitignore", ".spikuit/config.toml"],
+                    check=True,
+                )
+                subprocess.run(
+                    [
+                        "git",
+                        "-C",
+                        str(config.root),
+                        "commit",
+                        "-q",
+                        "-m",
+                        f"manual: init brain '{config.name}'",
+                    ],
+                    check=True,
+                )
+                git_initialized = True
+            except (subprocess.CalledProcessError, FileNotFoundError) as e:
+                typer.echo(f"  warning: git init skipped ({e})", err=True)
+
     if as_json:
         _out({
             "root": str(config.root),
@@ -182,6 +227,7 @@ def init(
             "embedder": config.embedder.provider,
             "name": config.name,
             "mode": mode,
+            "git": git_initialized,
         }, use_json=True)
     else:
         typer.echo(f"\nInitialized brain '{config.name}' at {config.spikuit_dir}/")
@@ -191,6 +237,10 @@ def init(
             typer.echo(f"  embedder: {config.embedder.provider} ({config.embedder.model})")
         else:
             typer.echo(f"  embedder: none (edit config.toml to enable)")
+        if git_initialized:
+            typer.echo("  git:      initialized (.gitignore + initial commit)")
+        elif git:
+            typer.echo("  git:      already present")
 
         if mode is not None:
             typer.echo("")
