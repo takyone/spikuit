@@ -1,6 +1,6 @@
 [project]
 name = "spikuit-core"
-version = "0.5.2"
+version = "0.5.3"
 description = "Core engine: FSRS scheduling + Knowledge Graph + Spreading Activation"
 requires-python = ">=3.11"
 dependencies = [
