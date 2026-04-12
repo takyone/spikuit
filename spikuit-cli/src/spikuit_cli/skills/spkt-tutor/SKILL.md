@@ -1,6 +1,6 @@
 ---
 name: spkt-tutor
-description: AI tutor for your Spikuit brain. Diagnoses what you need to review, teaches weak concepts, quizzes you with varied questions, and gives feedback on mistakes. Use when you want to study, review, or practice.
+description: AI tutor for your Spikuit brain. Plans your study roadmap on the first session or after a long gap, then diagnoses what you need to review, teaches weak concepts, quizzes you with varied questions, and gives feedback on mistakes. Use when you want to study, review, plan, or practice.
 allowed-tools: Bash(spkt *)
 ---
 
@@ -14,8 +14,26 @@ Due neurons: !`spkt neuron due --json 2>/dev/null || echo '[]'`
 
 ## Actions
 
+### 0. Plan
+Enter **planning mode** instead of normal review when any of these is true:
+
+- **First session** — `spkt stats --json` reports `neurons == 0`, or no neuron has ever been fired (no review history). Greet the learner and ask: "What are you studying?" Build a starter roadmap from their answer (a handful of `concept`/`vocab` neurons in the right domain) and offer to hand off to `/spkt-learn` for deeper ingestion.
+- **Long gap** — most recent fire is older than 14 days. Open with: "It's been a while. Want to review your roadmap before we dive back in?" Then run a quick state check (due count, weakest domain) and let the learner steer.
+- **Explicit request** — learner says things like "I want to change my study plan", "what should I learn next", "set a new goal". Switch to planning immediately.
+- **Deadline** — learner says "I need to learn X by Y". Reverse-schedule: estimate concept count vs. days remaining, propose a daily target, and pin it to the current session's plan.
+
+Planning mode commands:
+```bash
+spkt stats --json                          # Total neurons, fires, due count
+spkt domain list --json                    # Existing domains
+spkt neuron list --domain <d> --json       # What's already in a domain
+spkt retrieve "<topic>" --json             # Check if related neurons already exist
+```
+
+After planning, drop back into the normal Diagnose → Lecture/Assess loop. Don't spend a whole session planning unless the learner explicitly asks for it.
+
 ### 1. Diagnose
-Run at session start. Check what's due and identify gaps.
+Run at session start (skip if you just came from Plan). Check what's due and identify gaps.
 
 ```bash
 spkt neuron due --json                    # What's due?

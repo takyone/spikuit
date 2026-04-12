@@ -54,6 +54,28 @@ app.add_typer(skills_app, name="skills")
 
 
 _VALID_PROVIDERS = ("openai-compat", "ollama")
+_VALID_MODES = ("study", "rag")
+
+_STUDY_NEXT_STEPS = """\
+Next steps for study mode:
+  1. Open your Agent CLI in this directory
+  2. Run /spkt-tutor — the tutor will ask "What are you studying?" and
+     build a starter roadmap, then drop into review.
+  3. As you learn, add neurons with: spkt neuron add "<markdown>" -t concept -d <domain>
+"""
+
+_RAG_NEXT_STEPS = """\
+Next steps for RAG mode:
+  1. Ingest sources:
+       spkt source learn https://example.com/article -d <domain>
+       spkt source learn ./paper.pdf -d <domain>
+  2. Backfill embeddings if you skipped the embedder above:
+       spkt embed-all
+  3. Query the brain:
+       spkt retrieve "<question>"
+  4. Export a read-only bundle for a server:
+       spkt export qabot --output ./brain.db
+"""
 
 _PROVIDER_DEFAULTS = {
     "openai-compat": {
@@ -74,14 +96,22 @@ def init(
     base_url: str = typer.Option("", "--base-url", help="Embedder API base URL"),
     model: str = typer.Option("", "--model", "-m", help="Embedding model name"),
     dimension: int = typer.Option(768, "--dimension", "-d", help="Embedding dimension"),
+    mode: Optional[str] = typer.Option(None, "--mode", help="Onboarding mode: study|rag (affects next-step guidance only)"),
     as_json: bool = typer.Option(False, "--json", help="Non-interactive JSON output"),
 ) -> None:
     """Initialize a new brain in the current directory.
 
     Without flags, starts an interactive wizard.
     With --json or explicit --provider, runs non-interactively.
+
+    The brain layout is identical for study and RAG modes; the choice only
+    changes the onboarding guidance printed at the end.
     """
     interactive = not as_json and provider is None
+
+    if mode is not None and mode not in _VALID_MODES:
+        typer.echo(f"Invalid mode '{mode}'. Choose from: {', '.join(_VALID_MODES)}", err=True)
+        raise typer.Exit(1)
 
     if interactive:
         default_name = Path.cwd().name
@@ -103,10 +133,23 @@ def init(
         else:
             provider = "none"
 
+        if mode is None:
+            typer.echo("")
+            typer.echo("How will you use this brain?")
+            typer.echo("  study — review with /spkt-tutor (FSRS, scaffolded teaching)")
+            typer.echo("  rag   — ingest sources and query with /spkt-qabot")
+            while True:
+                mode_input = typer.prompt("  Mode", default="study")
+                if mode_input in _VALID_MODES:
+                    mode = mode_input
+                    break
+                typer.echo(f"  Invalid mode. Choose from: {', '.join(_VALID_MODES)}")
+
         typer.echo("")
         typer.echo("--- Summary ---")
         typer.echo(f"Brain:    {name}")
         typer.echo(f"Location: {Path.cwd() / '.spikuit/'}")
+        typer.echo(f"Mode:     {mode}")
         typer.echo(f"Embedder: {provider}")
         if provider != "none":
             typer.echo(f"  URL:    {base_url}")
@@ -138,6 +181,7 @@ def init(
             "config": str(config.config_path),
             "embedder": config.embedder.provider,
             "name": config.name,
+            "mode": mode,
         }, use_json=True)
     else:
         typer.echo(f"\nInitialized brain '{config.name}' at {config.spikuit_dir}/")
@@ -147,6 +191,10 @@ def init(
             typer.echo(f"  embedder: {config.embedder.provider} ({config.embedder.model})")
         else:
             typer.echo(f"  embedder: none (edit config.toml to enable)")
+
+        if mode is not None:
+            typer.echo("")
+            typer.echo(_STUDY_NEXT_STEPS if mode == "study" else _RAG_NEXT_STEPS)
 
         # Agent CLI skills installation
         if interactive:
