@@ -343,22 +343,37 @@ each `RenderResponse`, so agents can drive the loop without a terminal.
 
 ## Migration notes
 
-### Removed / deprecated
+The migration happens in two phases to avoid disrupting `TutorSession` in
+`spikuit-core`, which currently depends on the legacy `Quiz` ABC.
 
-- `spikuit_core.AutoQuiz` → removed, deprecation alias re-exported from
-  `spikuit_core.__init__` for one minor version, pointing at a no-op that
-  raises `NotImplementedError` with a migration hint.
-- `AutoQuiz.generate_fn` / `grade_fn` callback contract → removed. Generation
-  and grading now live in agent skills.
+### Phase 1 — v0.6.2 (this issue, #39)
 
-### Kept
+- New `BaseQuiz` abstraction lives in `spikuit-cli/src/spikuit_cli/quiz/`
+  — completely new code, does not touch `spikuit-core/quiz.py`.
+- New `Flashcard` implementation in cli: uses `Circuit` directly for neuron
+  content and FSRS recording; does not subclass the legacy core `Quiz` ABC.
+- `spkt quiz` command rewired to the new Textual TUI and new `Flashcard`.
+- Legacy `spikuit_core.quiz` (Quiz / Flashcard / AutoQuiz) stays in place
+  untouched and continues to back `TutorSession`. Marked as deprecated in
+  docstrings; removal deferred to Phase 2.
+- `QuizResponse` / new-shape `QuizResult` live in `spikuit-cli.quiz.models`
+  (not in core) for v0.6.2. If Phase 2 needs them in core, they promote.
+
+### Phase 2 — v0.6.3 (#42 Tutor coaching improvements)
+
+- Migrate `TutorSession` to the new Quiz v2 abstraction.
+- Remove `spikuit_core/quiz.py` entirely.
+- Leave deprecation aliases in `spikuit_core/__init__.py`:
+  `spikuit_core.Flashcard` / `Quiz` / `AutoQuiz` emit a `DeprecationWarning`
+  and point at `spikuit_cli.quiz` (raising `ImportError` if cli is not
+  installed) — removed in v0.7.
+
+### Kept throughout
 
 - `QuizItem`, `QuizRequest`, `QuizItemRole` — still in `spikuit-core.models`.
 - `Circuit.add_quiz_item` / `get_quiz_items` — still in core; used by Path A.
 - `Scaffold`, `compute_scaffold` — scaffolding is a property of the
   neuron-and-graph state, not of the quiz layer.
-- `spikuit_core.Flashcard` as an import alias re-exporting
-  `spikuit_cli.quiz.Flashcard` for one minor version.
 
 ### DB schema
 
