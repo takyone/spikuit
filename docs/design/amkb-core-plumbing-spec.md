@@ -1,8 +1,9 @@
 # AMKB Core Plumbing Spec — Spikuit v0.7.0
 
-**Status.** Draft. Companion to `amkb-integration-plan.md`. Defines
-the concrete `spikuit-core` changes required before the v0.7.1
-adapter can satisfy AMKB L1/L2/L4a/L4b conformance.
+**Status.** **Shipped with v0.7.0 (2026-04-13).** Companion to
+`amkb-integration-plan.md`. Defines the concrete `spikuit-core`
+changes that enabled the v0.7.1 adapter to satisfy AMKB
+L1/L2/L4a/L4b conformance.
 
 **Audience.** Reviewers of the v0.7.0 PR. Nothing in this doc
 touches `spikuit-agents/amkb/` — the adapter is v0.7.1.

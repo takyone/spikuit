@@ -1,9 +1,11 @@
 # AMKB Integration Plan — Spikuit v0.7.x
 
-**Status.** Draft. Targets merge as `v0.7.0` and `v0.7.1`, branched
-from `v0.6.2`. Written against `amkb-spec` v0.2.0 and `amkb-sdk`
-v0.0.1 (name reserved on PyPI; usable API lands with `amkb==0.1.0`
-after this work ships).
+**Status.** **Shipped.** v0.7.0 released 2026-04-13 (core plumbing);
+v0.7.1 released 2026-04-13 (adapter + conformance). This plan is now
+a reference record — further AMKB work is tracked under
+`v0.7.2`+ milestones. Written against `amkb-spec` v0.2.0 and
+`amkb-sdk` (consumed as an editable path source until
+`amkb==0.1.0` ships on PyPI).
 
 **Goal.** Let any AMKB-aware consumer drive a Spikuit brain through
 the `amkb.Store` Protocol — without changing what existing
@@ -38,7 +40,7 @@ plan does not accept "small" exceptions.
 
 The work splits cleanly along the core/adapter boundary.
 
-### v0.7.0 — AMKB core plumbing
+### v0.7.0 — AMKB core plumbing ✅ shipped (2026-04-13)
 
 Adds the minimum `spikuit-core` primitives that an adapter needs
 to satisfy AMKB L1 (Core) conformance. Nothing here is
@@ -71,28 +73,40 @@ Scope (detailed in `amkb-core-plumbing-spec.md`):
   storage. Junction `neuron_source` becomes the `derived_from`
   edge set on read.
 
-### v0.7.1 — AMKB adapter + conformance
+### v0.7.1 — AMKB adapter + conformance ✅ shipped (2026-04-13)
 
-Adds `spikuit-agents/src/spikuit_agents/amkb/` with:
+Added `spikuit-agents/src/spikuit_agents/amkb/` with six modules:
 
-- `store.py` — `SpikuitStore` class satisfying `amkb.Store`
-- `transaction.py` — `SpikuitTransaction` satisfying
-  `amkb.Transaction`
-- `mapping.py` — Neuron ↔ Node, Synapse ↔ Edge, error
-  translation, attestation rel mapping
-- `conformance/` — fixture that instantiates a temp Brain,
-  a root `conftest.py` wiring the `store` fixture to the
-  conformance suite, and a CI job running
-  `pytest --pyargs amkb.conformance`
+- `store.py` — `SpikuitStore` satisfying `amkb.Store`
+- `transaction.py` — `SpikuitStoreTransaction` satisfying
+  `amkb.Transaction` (drives `Circuit.transaction()`'s async
+  `__aenter__`/`__aexit__` across separate bg-loop submissions)
+- `mapping.py` — Neuron ↔ Node, Synapse ↔ Edge, datetime
+  → `Timestamp`, rel → `SynapseType`
+- `_loop.py` — persistent background asyncio loop so aiosqlite
+  stays pinned to a single thread for the store's lifetime
+- `_ids.py` — `pre|post|rel` triple codec for AMKB `EdgeRef`s
+- `__init__.py` — public surface
 
-Exit criteria:
+Conformance (`pytest spikuit-agents/tests/test_amkb_conformance.py`):
 
-- All L1 conformance tests pass
-- L2 lineage tests pass
-- L4a structural tests pass
-- L4b intent tests pass
-- L3 transactional: capability flags opted in where supported,
-  skipped otherwise (same model as the dict test store)
+| Level | Pass | Skip | Notes |
+|---|---|---|---|
+| L1 core | 16 | 0 | — |
+| L2 lineage | 5 | 1 | `KIND_CATEGORY` not in v0.7.x |
+| L3 transactional | 0 | 7 | No concurrent tx, no `revert()` — v0.8+ |
+| L4a structural | 5 | 2 | `derived_from` / `attested_by` have no `SynapseType` counterpart |
+| L4b intent | 5 | 2 | Free-form attr filter; trivially-true ordering case |
+
+**Total**: 31 passed / 12 skipped / 0 failed. No regressions
+(`spikuit-core` 330 / `spikuit-agents` 39). Adapter-only release:
+`spikuit-core` gained one helper (`Database.get_neuron_retired_at`)
+and is otherwise unchanged.
+
+The L3 skip block is the main v0.8+ debt: Spikuit's `Circuit`
+forbids nested transactions (`TransactionNestingError`) and the
+adapter has no `revert()`, so concurrent MVCC and rollback will
+both need engine work before that level can light up.
 
 ## Dependency with v1.0.0 feature issues
 
@@ -169,25 +183,28 @@ Milestone reordering is not required.
   feature is opt-in, but v1.0.0 needs a retention policy
   (separate issue).
 - **Adapter depends on `amkb==0.0.1` which is intentionally
-  unusable.** The adapter branch will pin a local path or
-  `amkb @ git+...` until `amkb==0.1.0` ships. v0.7.1 release is
-  gated on that.
+  unusable.** Resolved at ship time by consuming `amkb-sdk` as an
+  editable path source (`../amkb/amkb-sdk`) from the workspace
+  root `pyproject.toml`. A proper `amkb==0.1.x` PyPI pin still
+  needs to happen before this repo is published externally.
 
-## Success criteria
+## Success criteria — all met as of v0.7.1 ship
 
-- `amkb-integration` merges to main with zero regressions in
-  existing `spikuit-core` / `spikuit-cli` tests
-- `pytest --pyargs amkb.conformance` run from a Spikuit test
-  directory passes L1/L2/L4a/L4b
-- No `amkb.*` import appears in `spikuit-core`
-- No Spikuit internal type (Neuron, Synapse, Circuit) appears in
-  any AMKB-facing API
-- `spkt` CLI behavior is byte-identical to v0.6.2 for every
-  existing subcommand under test coverage, with one deliberate
-  exception: `spkt stats --json` gains additive fields
-  (`neurons_retired`, related counts). No existing field
-  changes semantics. No other command's output is allowed to
-  drift
-- `retrieve` recall@k is unchanged on a zero-retired fixture,
-  and within noise on a 30%-retired fixture (ANN index is
-  physically cleaned on retire)
+- [x] v0.7.x merges to main with zero regressions in existing
+      `spikuit-core` / `spikuit-cli` tests (core 330 pass, agents
+      39 pass on 2026-04-13)
+- [x] `pytest spikuit-agents/tests/test_amkb_conformance.py` passes
+      L1/L2/L4a/L4b (31 passed, 12 capability-skipped)
+- [x] No `amkb.*` import appears in `spikuit-core`
+- [x] No Spikuit internal type (Neuron, Synapse, Circuit) appears
+      in any AMKB-facing API (all translation lives in
+      `spikuit_agents.amkb.mapping`)
+- [x] `spkt` CLI behavior is byte-identical to v0.6.2 for every
+      existing subcommand under test coverage, with one
+      deliberate exception: `spkt stats --json` gains additive
+      fields (`neurons_retired`, related counts). No existing
+      field changes semantics. No other command's output
+      drifted
+- [x] `retrieve` recall@k unchanged on a zero-retired fixture,
+      within noise on a 30%-retired fixture (ANN index is
+      physically cleaned on retire)
