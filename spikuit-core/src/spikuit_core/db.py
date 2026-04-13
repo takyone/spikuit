@@ -51,7 +51,8 @@ CREATE TABLE IF NOT EXISTS spike (
     neuron_id TEXT NOT NULL REFERENCES neuron(id),
     grade INTEGER NOT NULL,
     fired_at TEXT NOT NULL,
-    session_id TEXT
+    session_id TEXT,
+    notes TEXT
 );
 
 CREATE TABLE IF NOT EXISTS retrieve_log (
@@ -161,6 +162,7 @@ class Database:
             "ALTER TABLE source ADD COLUMN status TEXT DEFAULT 'active'",
             "ALTER TABLE synapse ADD COLUMN confidence TEXT DEFAULT 'extracted'",
             "ALTER TABLE synapse ADD COLUMN confidence_score REAL DEFAULT 1.0",
+            "ALTER TABLE spike ADD COLUMN notes TEXT",
         ]
         for sql in migrations:
             try:
@@ -399,13 +401,14 @@ class Database:
 
     async def insert_spike(self, spike: Spike) -> int:
         cursor = await self.conn.execute(
-            """INSERT INTO spike (neuron_id, grade, fired_at, session_id)
-               VALUES (?, ?, ?, ?)""",
+            """INSERT INTO spike (neuron_id, grade, fired_at, session_id, notes)
+               VALUES (?, ?, ?, ?, ?)""",
             (
                 spike.neuron_id,
                 spike.grade.value,
                 _ts(spike.fired_at),
                 spike.session_id,
+                spike.notes,
             ),
         )
         await self.conn.commit()
@@ -967,11 +970,13 @@ def _row_to_source(row: aiosqlite.Row) -> Source:
 
 
 def _row_to_spike(row: aiosqlite.Row) -> Spike:
+    keys = row.keys()
     return Spike(
         neuron_id=row["neuron_id"],
         grade=Grade(row["grade"]),
         fired_at=_parse_ts(row["fired_at"]),
         session_id=row["session_id"],
+        notes=row["notes"] if "notes" in keys else None,
     )
 
 

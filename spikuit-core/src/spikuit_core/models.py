@@ -190,12 +190,14 @@ class Spike(msgspec.Struct, kw_only=True):
         grade: Review quality (see [`Grade`][spikuit_core.Grade]).
         fired_at: UTC timestamp, auto-set to now.
         session_id: Optional session identifier for grouping spikes.
+        notes: Optional free-text feedback captured with the review.
     """
 
     neuron_id: str
     grade: Grade
     fired_at: datetime = msgspec.UNSET  # type: ignore[assignment]
     session_id: str | None = None
+    notes: str | None = None
 
     def __post_init__(self) -> None:
         if self.fired_at is msgspec.UNSET:

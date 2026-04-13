@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import json
 import struct
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 import typer
 
-from spikuit_core import Circuit, Flashcard, Grade, Neuron, Source, SynapseType
+from spikuit_core import Circuit, Grade, Neuron, Source, SynapseType
 from spikuit_core.config import BrainConfig, find_spikuit_root, init_brain, load_config
 from spikuit_core.embedder import create_embedder
 
@@ -1011,92 +1012,150 @@ def _manual_html(d: dict) -> str:
 @app.command()
 def quiz(
     limit: int = typer.Option(10, "--limit", "-n", help="Max neurons per session"),
-    as_json: bool = typer.Option(False, "--json", help="Output as JSON (non-interactive, dump quiz items)"),
+    as_json: bool = typer.Option(False, "--json", help="Non-interactive JSON dump of all due quiz render payloads"),
+    no_tui: bool = typer.Option(False, "--no-tui", help="Drive the session via stdin/stdout JSON (one QuizResponse per line)"),
     brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
 ) -> None:
-    """Run an interactive flashcard review session."""
+    """Run an interactive flashcard review session.
+
+    Default: Textual TUI with flip, 1-4 grading, and optional notes.
+    --json:  Dump all due quiz render payloads at once, then exit.
+    --no-tui: Stream one RenderResponse per line to stdout, read one
+              QuizResponse per line from stdin, grade and record.
+    """
+    from .quiz import Flashcard as NewFlashcard
+    from .quiz.models import QuizResponse as NewQuizResponse
+    from spikuit_core import Spike
+    from spikuit_core.scaffold import compute_scaffold
+    import dataclasses as _dc
 
     async def _quiz():
         circuit = _get_circuit(brain)
         await circuit.connect()
         try:
-            fc = Flashcard(circuit)
-            due_ids = await fc.select(limit=limit)
+            due_ids = await circuit.due_neurons(limit=limit)
 
             if not due_ids:
-                if as_json:
+                if as_json or no_tui:
                     _out({"status": "no_due", "reviewed": 0}, use_json=True)
                 else:
                     typer.echo("No neurons due for review.")
                 return
 
-            # JSON mode: dump all quiz items non-interactively (for agent use)
+            # Build flashcard queue
+            queue: list[tuple[str, NewFlashcard]] = []
+            for nid in due_ids:
+                neuron = await circuit.get_neuron(nid)
+                if neuron is None:
+                    continue
+                scaffold = compute_scaffold(circuit, nid)
+                queue.append((nid, NewFlashcard(neuron, scaffold)))
+
+            def _render_payload(nid: str, fc: NewFlashcard) -> dict:
+                rr = fc.render()
+                return {
+                    "neuron_id": nid,
+                    "quiz_type": rr.quiz_type,
+                    "mode": rr.mode,
+                    "scaffold_level": fc.scaffold.level.value,
+                    "front": _dc.asdict(rr.front),
+                    "back": _dc.asdict(rr.back),
+                    "grade_choices": [
+                        {"key": c.key, "grade": c.grade.name, "label": c.label}
+                        for c in rr.grade_choices
+                    ],
+                    "accepts_notes": rr.accepts_notes,
+                    "context": list(fc.scaffold.context),
+                    "gaps": list(fc.scaffold.gaps),
+                }
+
+            # --json: batch dump
             if as_json:
-                items = []
-                for nid in due_ids:
-                    scaffold = fc.scaffold(nid)
-                    item = await fc.present(nid, scaffold)
-                    neuron = await circuit.get_neuron(nid)
-                    items.append({
-                        "neuron_id": nid,
-                        "title": _extract_title(neuron.content) if neuron else nid,
-                        "scaffold_level": scaffold.level.value,
-                        "question": item.question,
-                        "answer": item.answer,
-                        "hints": item.hints,
-                        "context": scaffold.context,
-                        "gaps": scaffold.gaps,
-                    })
-                _out({"status": "due", "count": len(items), "items": items}, use_json=True)
+                items = [_render_payload(nid, fc) for nid, fc in queue]
+                _out(
+                    {"status": "due", "count": len(items), "items": items},
+                    use_json=True,
+                )
                 return
 
-            # Interactive mode
-            reviewed = 0
-            grades: dict[str, int] = {"miss": 0, "weak": 0, "fire": 0, "strong": 0}
+            # --no-tui: interactive stdin/stdout JSON loop
+            if no_tui:
+                import json as _json
 
-            typer.echo(f"\n{len(due_ids)} neuron(s) due for review.\n")
-
-            for i, nid in enumerate(due_ids, 1):
-                scaffold = fc.scaffold(nid)
-                item = await fc.present(nid, scaffold)
-                neuron = await circuit.get_neuron(nid)
-                title = _extract_title(neuron.content) if neuron else nid
-
-                typer.echo(f"--- [{i}/{len(due_ids)}] {title} (scaffold: {scaffold.level.value}) ---")
-                typer.echo(f"\n{item.question}\n")
-
-                if item.hints:
-                    for hint in item.hints:
-                        typer.echo(f"  hint: {hint}")
-
-                # Wait for self-grade
-                grade_input = typer.prompt(
-                    "Grade (miss/weak/fire/strong or 1-4, 'a' for answer, 'q' to quit)"
+                reviewed = 0
+                grades = {"miss": 0, "weak": 0, "fire": 0, "strong": 0}
+                notes: list[dict] = []
+                for nid, fc in queue:
+                    payload = _render_payload(nid, fc)
+                    print(_json.dumps(payload), flush=True)
+                    line = sys.stdin.readline()
+                    if not line:
+                        break
+                    try:
+                        data = _json.loads(line)
+                    except _json.JSONDecodeError:
+                        typer.echo(f"invalid json: {line!r}", err=True)
+                        break
+                    if data.get("action") == "quit":
+                        break
+                    self_grade_name = data.get("self_grade")
+                    if self_grade_name is None:
+                        typer.echo("missing self_grade in response", err=True)
+                        continue
+                    try:
+                        grade = Grade[self_grade_name.upper()]
+                    except KeyError:
+                        typer.echo(f"unknown grade: {self_grade_name}", err=True)
+                        continue
+                    note = data.get("notes")
+                    response = NewQuizResponse(self_grade=grade, notes=note)
+                    result = fc.grade(response)
+                    final_grade = result.grade or grade
+                    await circuit.fire(
+                        Spike(neuron_id=nid, grade=final_grade, notes=note)
+                    )
+                    reviewed += 1
+                    grades[final_grade.name.lower()] += 1
+                    if note:
+                        notes.append({"neuron_id": nid, "note": note})
+                _out(
+                    {
+                        "status": "done",
+                        "reviewed": reviewed,
+                        "grades": grades,
+                        "notes": notes,
+                    },
+                    use_json=True,
                 )
+                return
 
-                if grade_input.lower() == "q":
-                    typer.echo("Session stopped.")
-                    break
+            # Default: Textual TUI
+            from .quiz.tui import QuizApp
 
-                if grade_input.lower() == "a":
-                    typer.echo(f"\n{item.answer}\n")
-                    grade_input = typer.prompt("Now grade (miss/weak/fire/strong or 1-4)")
+            recorded: list[tuple[str, Grade, Optional[str]]] = []
 
-                grade = fc.evaluate(nid, item, grade_input)
-                await fc.record(nid, grade)
-                grades[grade.name.lower()] += 1
-                reviewed += 1
+            def _record(neuron_id: str, grade: Grade, note: Optional[str]) -> None:
+                recorded.append((neuron_id, grade, note))
 
-                card = circuit.get_card(nid)
-                stab = f"{card.stability:.1f}" if card and card.stability else "-"
-                due_str = str(card.due) if card else "-"
-                typer.echo(f"  -> {grade.name}  stability={stab}  next_due={due_str}\n")
+            tui_app = QuizApp(queue=queue, record=_record)
+            result = await tui_app.run_async()
+
+            # Flush recorded grades to Circuit
+            for neuron_id, grade, note in recorded:
+                await circuit.fire(Spike(neuron_id=neuron_id, grade=grade, notes=note))
 
             # Summary
-            typer.echo(f"\nSession complete: {reviewed} reviewed")
-            for g, count in grades.items():
+            if result is None:
+                typer.echo("Session ended.")
+                return
+            typer.echo(f"\nSession complete: {result.reviewed} reviewed")
+            for g, count in result.grades.items():
                 if count > 0:
                     typer.echo(f"  {g}: {count}")
+            if result.notes:
+                typer.echo(f"\n{len(result.notes)} note(s) captured:")
+                for nid, note in result.notes:
+                    typer.echo(f"  {nid}: {note}")
 
         finally:
             await circuit.close()
