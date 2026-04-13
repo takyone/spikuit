@@ -20,14 +20,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check out amkb-sdk (sibling path the workspace pyproject expects)
-        env:
-          AMKB_SDK_REV: e7ae4de8ebe86002f55086488dec2ffa0adf8f77
-        run: |
-          git clone https://github.com/takyone/amkb-sdk.git \
-            "${GITHUB_WORKSPACE}/../amkb/amkb-sdk"
-          git -C "${GITHUB_WORKSPACE}/../amkb/amkb-sdk" checkout "${AMKB_SDK_REV}"
-
       - name: Install uv
         uses: astral-sh/setup-uv@v6
 
