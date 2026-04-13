@@ -21,8 +21,12 @@ from .embedder import Embedder, EmbeddingType, vec_to_blob
 from .models import Grade, Neuron, Plasticity, QuizItem, QuizItemRole, ScaffoldLevel, Source, Spike, Synapse, SynapseConfidence, SynapseType
 from .propagation import compute_propagation, compute_stdp, decay_all_pressure
 from .transactions import (
+    OP_NEURON_ADD,
     OP_NEURON_RETIRE,
+    OP_NEURON_UPDATE,
+    OP_SYNAPSE_ADD,
     OP_SYNAPSE_RETIRE,
+    OP_SYNAPSE_UPDATE,
     ActorKind,
     SpikuitTransaction,
     TransactionAbortedError,
@@ -34,6 +38,18 @@ def _neuron_snapshot_json(neuron: Neuron) -> str:
     """Serialize a Neuron to a JSON snapshot for the event log."""
     import msgspec
     return msgspec.json.encode(neuron).decode()
+
+
+def _synapse_snapshot_json(synapse: Synapse) -> str:
+    """Serialize a Synapse to a JSON snapshot for the event log."""
+    import msgspec
+    return msgspec.json.encode(synapse).decode()
+
+
+def _synapse_target_id(pre: str, post: str, stype: SynapseType | str) -> str:
+    """Stable target_id for synapse events: 'pre|post|type'."""
+    type_str = stype.value if isinstance(stype, SynapseType) else stype
+    return f"{pre}|{post}|{type_str}"
 
 # Grade → FSRS Rating mapping
 _GRADE_TO_RATING: dict[Grade, Rating] = {
@@ -292,21 +308,27 @@ class Circuit:
             The same neuron (pass-through for chaining).
         """
         self._guard_readonly()
-        await self._db.insert_neuron(neuron)
-        self._graph.add_node(neuron.id, type=neuron.type, domain=neuron.domain)
+        async with self._auto_tx(tag="neuron.add") as tx:
+            await self._db.insert_neuron(neuron)
+            self._graph.add_node(neuron.id, type=neuron.type, domain=neuron.domain)
 
-        # Initialize FSRS card
-        card = Card()
-        self._cards[neuron.id] = card
-        await self._db.upsert_fsrs_card(neuron.id, card.to_json())
+            # Initialize FSRS card
+            card = Card()
+            self._cards[neuron.id] = card
+            await self._db.upsert_fsrs_card(neuron.id, card.to_json())
 
-        # Auto-embed if embedder is available
-        if self._embedder is not None:
-            text = self._embedder.apply_prefix(
-                self._prepare_embed_text(neuron), EmbeddingType.DOCUMENT,
+            # Auto-embed if embedder is available
+            if self._embedder is not None:
+                text = self._embedder.apply_prefix(
+                    self._prepare_embed_text(neuron), EmbeddingType.DOCUMENT,
+                )
+                vec = await self._embedder.embed(text)
+                await self._db.upsert_embedding(neuron.id, vec_to_blob(vec))
+
+            tx.emit(
+                OP_NEURON_ADD, "neuron", neuron.id,
+                after_json=_neuron_snapshot_json(neuron),
             )
-            vec = await self._embedder.embed(text)
-            await self._db.upsert_embedding(neuron.id, vec_to_blob(vec))
 
         return neuron
 
@@ -318,17 +340,24 @@ class Circuit:
 
     async def update_neuron(self, neuron: Neuron) -> None:
         self._guard_readonly()
-        await self._db.update_neuron(neuron)
-        if neuron.id in self._graph:
-            self._graph.nodes[neuron.id]["type"] = neuron.type
-            self._graph.nodes[neuron.id]["domain"] = neuron.domain
-        # Re-embed on content change
-        if self._embedder is not None:
-            text = self._embedder.apply_prefix(
-                self._prepare_embed_text(neuron), EmbeddingType.DOCUMENT,
+        prior = await self._db.get_neuron(neuron.id)
+        async with self._auto_tx(tag="neuron.update") as tx:
+            await self._db.update_neuron(neuron)
+            if neuron.id in self._graph:
+                self._graph.nodes[neuron.id]["type"] = neuron.type
+                self._graph.nodes[neuron.id]["domain"] = neuron.domain
+            # Re-embed on content change
+            if self._embedder is not None:
+                text = self._embedder.apply_prefix(
+                    self._prepare_embed_text(neuron), EmbeddingType.DOCUMENT,
+                )
+                vec = await self._embedder.embed(text)
+                await self._db.upsert_embedding(neuron.id, vec_to_blob(vec))
+            tx.emit(
+                OP_NEURON_UPDATE, "neuron", neuron.id,
+                before_json=_neuron_snapshot_json(prior) if prior else None,
+                after_json=_neuron_snapshot_json(neuron),
             )
-            vec = await self._embedder.embed(text)
-            await self._db.upsert_embedding(neuron.id, vec_to_blob(vec))
 
     async def remove_neuron(self, neuron_id: str) -> None:
         """Soft-retire a neuron and cascade-retire its synapses.
@@ -454,26 +483,37 @@ class Circuit:
 
         created: list[Synapse] = []
 
-        synapse = Synapse(
-            pre=pre, post=post, type=type, weight=weight,
-            confidence=confidence, confidence_score=confidence_score,
-        )
-        await self._db.insert_synapse(synapse)
-        self._graph.add_edge(
-            pre, post, type=type.value, weight=weight, co_fires=0,
-        )
-        created.append(synapse)
-
-        if type.is_bidirectional:
-            reverse = Synapse(
-                pre=post, post=pre, type=type, weight=weight,
+        async with self._auto_tx(tag="synapse.add") as tx:
+            synapse = Synapse(
+                pre=pre, post=post, type=type, weight=weight,
                 confidence=confidence, confidence_score=confidence_score,
             )
-            await self._db.insert_synapse(reverse)
+            await self._db.insert_synapse(synapse)
             self._graph.add_edge(
-                post, pre, type=type.value, weight=weight, co_fires=0,
+                pre, post, type=type.value, weight=weight, co_fires=0,
             )
-            created.append(reverse)
+            created.append(synapse)
+            tx.emit(
+                OP_SYNAPSE_ADD, "synapse",
+                _synapse_target_id(pre, post, type),
+                after_json=_synapse_snapshot_json(synapse),
+            )
+
+            if type.is_bidirectional:
+                reverse = Synapse(
+                    pre=post, post=pre, type=type, weight=weight,
+                    confidence=confidence, confidence_score=confidence_score,
+                )
+                await self._db.insert_synapse(reverse)
+                self._graph.add_edge(
+                    post, pre, type=type.value, weight=weight, co_fires=0,
+                )
+                created.append(reverse)
+                tx.emit(
+                    OP_SYNAPSE_ADD, "synapse",
+                    _synapse_target_id(post, pre, type),
+                    after_json=_synapse_snapshot_json(reverse),
+                )
 
         return created
 
@@ -485,14 +525,30 @@ class Circuit:
     async def remove_synapse(
         self, pre: str, post: str, type: SynapseType
     ) -> None:
+        """Soft-retire a synapse and emit a retire event.
+
+        Bidirectional types retire both directions.
+        """
         self._guard_readonly()
-        await self._db.delete_synapse(pre, post, type)
-        if self._graph.has_edge(pre, post):
-            self._graph.remove_edge(pre, post)
-        if type.is_bidirectional:
-            await self._db.delete_synapse(post, pre, type)
-            if self._graph.has_edge(post, pre):
-                self._graph.remove_edge(post, pre)
+        async with self._auto_tx(tag="synapse.retire") as tx:
+            at = datetime.now(timezone.utc).isoformat()
+            did = await self._db.soft_retire_synapse(pre, post, type, at)
+            if self._graph.has_edge(pre, post):
+                self._graph.remove_edge(pre, post)
+            if did:
+                tx.emit(
+                    OP_SYNAPSE_RETIRE, "synapse",
+                    _synapse_target_id(pre, post, type),
+                )
+            if type.is_bidirectional:
+                did_r = await self._db.soft_retire_synapse(post, pre, type, at)
+                if self._graph.has_edge(post, pre):
+                    self._graph.remove_edge(post, pre)
+                if did_r:
+                    tx.emit(
+                        OP_SYNAPSE_RETIRE, "synapse",
+                        _synapse_target_id(post, pre, type),
+                    )
 
     async def list_synapses(
         self,
@@ -552,10 +608,18 @@ class Circuit:
         synapse = await self._db.get_synapse(pre, post, type)
         if synapse is None:
             raise ValueError(f"Synapse not found: {pre!r} → {post!r} ({type.value})")
-        synapse.weight = weight
-        await self._db.update_synapse(synapse)
-        if self._graph.has_edge(pre, post):
-            self._graph[pre][post]["weight"] = weight
+        before = _synapse_snapshot_json(synapse)
+        async with self._auto_tx(tag="synapse.weight") as tx:
+            synapse.weight = weight
+            await self._db.update_synapse(synapse)
+            if self._graph.has_edge(pre, post):
+                self._graph[pre][post]["weight"] = weight
+            tx.emit(
+                OP_SYNAPSE_UPDATE, "synapse",
+                _synapse_target_id(pre, post, type),
+                before_json=before,
+                after_json=_synapse_snapshot_json(synapse),
+            )
         return synapse
 
     async def merge_neurons(

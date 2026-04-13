@@ -567,11 +567,28 @@ class Database:
         await self.conn.commit()
 
     async def delete_synapse(self, pre: str, post: str, type: SynapseType) -> None:
+        """Hard-delete a synapse row.
+
+        Reachable only from ``spkt history prune``. Circuit's public
+        ``remove_synapse`` always uses the soft path.
+        """
         await self.conn.execute(
             "DELETE FROM synapse WHERE pre=? AND post=? AND type=?",
             (pre, post, type.value),
         )
         await self.conn.commit()
+
+    async def soft_retire_synapse(
+        self, pre: str, post: str, type: SynapseType, at: str,
+    ) -> bool:
+        """Mark a single synapse retired. Returns True if a row was updated."""
+        cur = await self.conn.execute(
+            "UPDATE synapse SET retired_at=? "
+            "WHERE pre=? AND post=? AND type=? AND retired_at IS NULL",
+            (at, pre, post, type.value),
+        )
+        await self.conn.commit()
+        return cur.rowcount > 0
 
     # -- FSRS state ---------------------------------------------------------
 
