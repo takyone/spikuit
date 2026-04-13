@@ -97,7 +97,7 @@ plugins:
   - mkdocstrings:
       handlers:
         python:
-          paths: [spikuit-core/src]
+          paths: [spikuit-core/src, spikuit-cli/src, spikuit-agents/src]
           options:
             show_source: false
             show_root_heading: true

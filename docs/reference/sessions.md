@@ -11,6 +11,7 @@ Sessions define how you interact with it.
 
 ::: spikuit_core.IngestSession
 
-::: spikuit_core.TutorState
+`TutorSession` moved to `spikuit_cli.tutor` in v0.6.3 — the core is
+LLM-free and the tutor orchestration belongs with the CLI.
 
-::: spikuit_core.TutorSession
+::: spikuit_cli.tutor.TutorSession
