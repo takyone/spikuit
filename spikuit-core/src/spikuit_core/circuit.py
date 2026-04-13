@@ -22,6 +22,7 @@ from .models import Grade, Neuron, Plasticity, QuizItem, QuizItemRole, ScaffoldL
 from .propagation import compute_propagation, compute_stdp, decay_all_pressure
 from .transactions import (
     OP_NEURON_ADD,
+    OP_NEURON_MERGE,
     OP_NEURON_RETIRE,
     OP_NEURON_UPDATE,
     OP_SYNAPSE_ADD,
@@ -658,59 +659,89 @@ class Circuit:
                 raise ValueError(f"Source neuron not found: {sid!r}")
             sources_to_merge.append(n)
 
-        # 1. Append content
-        merged_content = target.content
-        for n in sources_to_merge:
-            merged_content += "\n\n---\n\n" + n.content
-        target.content = merged_content
-        await self._db.update_neuron(target)
+        async with self._auto_tx(tag="neuron.merge") as tx:
+            before_target = _neuron_snapshot_json(target)
 
-        # 2. Redirect synapses
-        synapses_redirected = 0
-        for sid in source_ids:
-            for s in await self._db.get_synapses_from(sid):
-                if s.post == into_id or s.post in source_ids:
-                    continue  # skip self-loops and links between merged neurons
-                existing = await self._db.get_synapse(into_id, s.post, s.type)
-                if existing is None:
-                    new_syn = Synapse(pre=into_id, post=s.post, type=s.type, weight=s.weight)
-                    await self._db.insert_synapse(new_syn)
-                    self._graph.add_edge(into_id, s.post, type=s.type.value, weight=s.weight, co_fires=0)
-                    synapses_redirected += 1
+            # 1. Append content
+            merged_content = target.content
+            for n in sources_to_merge:
+                merged_content += "\n\n---\n\n" + n.content
+            target.content = merged_content
+            await self._db.update_neuron(target)
 
-            for s in await self._db.get_synapses_to(sid):
-                if s.pre == into_id or s.pre in source_ids:
-                    continue
-                existing = await self._db.get_synapse(s.pre, into_id, s.type)
-                if existing is None:
-                    new_syn = Synapse(pre=s.pre, post=into_id, type=s.type, weight=s.weight)
-                    await self._db.insert_synapse(new_syn)
-                    self._graph.add_edge(s.pre, into_id, type=s.type.value, weight=s.weight, co_fires=0)
-                    synapses_redirected += 1
+            # 2. Redirect synapses
+            synapses_redirected = 0
+            for sid in source_ids:
+                for s in await self._db.get_synapses_from(sid):
+                    if s.post == into_id or s.post in source_ids:
+                        continue
+                    existing = await self._db.get_synapse(into_id, s.post, s.type)
+                    if existing is None:
+                        new_syn = Synapse(pre=into_id, post=s.post, type=s.type, weight=s.weight)
+                        await self._db.insert_synapse(new_syn)
+                        self._graph.add_edge(into_id, s.post, type=s.type.value, weight=s.weight, co_fires=0)
+                        synapses_redirected += 1
+                        tx.emit(
+                            OP_SYNAPSE_ADD, "synapse",
+                            _synapse_target_id(into_id, s.post, s.type),
+                            after_json=_synapse_snapshot_json(new_syn),
+                        )
 
-        # 3. Transfer source attachments
-        sources_transferred = 0
-        for sid in source_ids:
-            neuron_sources = await self._db.get_sources_for_neuron(sid)
-            for src in neuron_sources:
-                await self._db.attach_source(into_id, src.id)
-                sources_transferred += 1
+                for s in await self._db.get_synapses_to(sid):
+                    if s.pre == into_id or s.pre in source_ids:
+                        continue
+                    existing = await self._db.get_synapse(s.pre, into_id, s.type)
+                    if existing is None:
+                        new_syn = Synapse(pre=s.pre, post=into_id, type=s.type, weight=s.weight)
+                        await self._db.insert_synapse(new_syn)
+                        self._graph.add_edge(s.pre, into_id, type=s.type.value, weight=s.weight, co_fires=0)
+                        synapses_redirected += 1
+                        tx.emit(
+                            OP_SYNAPSE_ADD, "synapse",
+                            _synapse_target_id(s.pre, into_id, s.type),
+                            after_json=_synapse_snapshot_json(new_syn),
+                        )
 
-        # 4. Remove source neurons (cascades synapses + graph nodes)
-        for sid in source_ids:
-            await self.remove_neuron(sid)
+            # 3. Transfer source attachments
+            sources_transferred = 0
+            for sid in source_ids:
+                neuron_sources = await self._db.get_sources_for_neuron(sid)
+                for src in neuron_sources:
+                    await self._db.attach_source(into_id, src.id)
+                    sources_transferred += 1
 
-        # 5. Re-embed target
-        if self._embedder is not None:
-            text = self._embedder.apply_prefix(
-                self._prepare_embed_text(target), EmbeddingType.DOCUMENT,
+            # 4. Retire source neurons (shares the merge changeset)
+            import msgspec
+            from datetime import datetime, timezone
+            for sid in source_ids:
+                await self.remove_neuron(sid)
+                await self._db.insert_predecessor(
+                    into_id, sid,
+                    datetime.now(timezone.utc).isoformat(),
+                )
+
+            # 5. Re-embed target
+            if self._embedder is not None:
+                text = self._embedder.apply_prefix(
+                    self._prepare_embed_text(target), EmbeddingType.DOCUMENT,
+                )
+                vec = await self._embedder.embed(text)
+                await self._db.upsert_embedding(into_id, vec_to_blob(vec))
+
+            # 6. Update in-memory graph node
+            if into_id in self._graph:
+                self._graph.nodes[into_id]["content"] = target.content
+
+            # 7. Emit a single merge event on the target.
+            merge_payload = msgspec.json.encode({
+                "into": into_id,
+                "sources": list(source_ids),
+            }).decode()
+            tx.emit(
+                OP_NEURON_MERGE, "neuron", into_id,
+                before_json=before_target,
+                after_json=merge_payload,
             )
-            vec = await self._embedder.embed(text)
-            await self._db.upsert_embedding(into_id, vec_to_blob(vec))
-
-        # 6. Update in-memory graph node
-        if into_id in self._graph:
-            self._graph.nodes[into_id]["content"] = target.content
 
         return {
             "merged": len(source_ids),
@@ -718,6 +749,13 @@ class Circuit:
             "synapses_redirected": synapses_redirected,
             "sources_transferred": sources_transferred,
         }
+
+    async def predecessors_of_lineage(self, neuron_id: str) -> list[str]:
+        """Return parent neuron IDs recorded when ``neuron_id`` absorbed them.
+
+        Adapter-only read API for AMKB L2 lineage conformance.
+        """
+        return await self._db.get_predecessors(neuron_id)
 
     # -- _meta neurons ------------------------------------------------------
 

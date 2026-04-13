@@ -353,6 +353,26 @@ class Database:
         )
         return [dict(row) async for row in cur]
 
+    # -- Lineage (neuron_predecessor) ---------------------------------------
+
+    async def insert_predecessor(
+        self, child_id: str, parent_id: str, at: str,
+    ) -> None:
+        await self.conn.execute(
+            "INSERT OR IGNORE INTO neuron_predecessor (child_id, parent_id, at) "
+            "VALUES (?, ?, ?)",
+            (child_id, parent_id, at),
+        )
+        await self.conn.commit()
+
+    async def get_predecessors(self, child_id: str) -> list[str]:
+        rows = await self.conn.execute_fetchall(
+            "SELECT parent_id FROM neuron_predecessor WHERE child_id = ? "
+            "ORDER BY at",
+            (child_id,),
+        )
+        return [r["parent_id"] for r in rows]
+
     @property
     def conn(self) -> aiosqlite.Connection:
         if self._conn is None:
