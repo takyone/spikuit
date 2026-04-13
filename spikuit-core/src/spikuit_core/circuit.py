@@ -757,6 +757,16 @@ class Circuit:
         """
         return await self._db.get_predecessors(neuron_id)
 
+    async def prune_retired(self) -> dict[str, int]:
+        """Physically delete all soft-retired neurons and synapses.
+
+        Escape hatch for ``spkt history prune``. Event log is preserved.
+        Does not emit events — this is historical garbage collection,
+        not a lifecycle transition.
+        """
+        self._guard_readonly()
+        return await self._db.prune_retired_neurons()
+
     # -- _meta neurons ------------------------------------------------------
 
     async def upsert_meta_neuron(self, meta_id: str, content: str) -> Neuron:
@@ -1876,9 +1886,11 @@ class Circuit:
     async def stats(self) -> dict[str, object]:
         """Overview statistics."""
         neuron_count = await self._db.count_neurons()
+        total_count = await self._db.count_neurons(include_retired=True)
         cmap = self.community_map()
         return {
             "neurons": neuron_count,
+            "neurons_retired": total_count - neuron_count,
             "synapses": self._graph.number_of_edges(),
             "graph_density": nx.density(self._graph) if neuron_count > 1 else 0.0,
             "cards_loaded": len(self._cards),

@@ -29,9 +29,11 @@ from ..helpers import (
     GITIGNORE_TEMPLATE,
     _brain_root,
     _current_branch,
+    _get_circuit,
     _git,
     _is_git_repo,
     _out,
+    _run,
 )
 
 branch_app = typer.Typer(help="Manage Brain version-control branches.")
@@ -110,7 +112,16 @@ def branch_abandon(
 # -- history & undo (top-level commands) ------------------------------------
 
 
-def history_cmd(
+history_app = typer.Typer(
+    help="Brain history: git log view + AMKB event-log prune.",
+    invoke_without_command=True,
+    no_args_is_help=False,
+)
+
+
+@history_app.callback()
+def _history_root(
+    ctx: typer.Context,
     limit: int = typer.Option(20, "--limit", "-n", help="Max commits to show"),
     grep: Optional[str] = typer.Option(
         None, "--grep", "-g", help="Filter commits by message substring"
@@ -118,7 +129,19 @@ def history_cmd(
     brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
     as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
-    """Show Brain commit history (wraps git log with Spikuit conventions)."""
+    """Show Brain commit history when invoked without a subcommand."""
+    if ctx.invoked_subcommand is not None:
+        return
+    _history_show(limit=limit, grep=grep, brain=brain, as_json=as_json)
+
+
+def _history_show(
+    *,
+    limit: int,
+    grep: Optional[str],
+    brain: Optional[Path],
+    as_json: bool,
+) -> None:
     if not _is_git_repo(brain):
         typer.echo("Brain has no git repository.", err=True)
         raise typer.Exit(1)
@@ -140,6 +163,48 @@ def history_cmd(
     else:
         for r in rows:
             typer.echo(f"{r['sha']}  {r['date']}  {r['message']}")
+
+
+@history_app.command(name="prune")
+def history_prune_cmd(
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
+    brain: Optional[Path] = typer.Option(None, "--brain", "-b", help="Brain root directory"),
+    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
+) -> None:
+    """Physically delete every soft-retired neuron and synapse.
+
+    Escape hatch for AMKB soft-retire: once you are sure you will not need
+    retired rows for audit or recovery, this reclaims their storage. The
+    git-tracked event log is preserved.
+    """
+    async def _count(c):
+        retired_total = await c._db.count_neurons(include_retired=True)
+        live = await c._db.count_neurons()
+        return retired_total - live
+
+    circuit = _get_circuit(brain)
+    pending = _run(_count(circuit))
+    if pending == 0:
+        _out({"neurons_pruned": 0, "synapses_pruned": 0}, use_json=as_json)
+        if not as_json:
+            typer.echo("Nothing to prune.")
+        return
+
+    if not yes:
+        confirm = typer.confirm(
+            f"Permanently delete {pending} retired neuron(s)? "
+            "Event log is preserved."
+        )
+        if not confirm:
+            raise typer.Exit(1)
+
+    result = _run(circuit.prune_retired())
+    _out(result, use_json=as_json)
+    if not as_json:
+        typer.echo(
+            f"Pruned {result['neurons_pruned']} neurons, "
+            f"{result['synapses_pruned']} synapses."
+        )
 
 
 def undo_cmd(

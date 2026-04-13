@@ -19,7 +19,7 @@ from .commands import (
     branch_app,
     community_app,
     domain_app,
-    history_cmd,
+    history_app,
     neuron_app,
     skills_app,
     source_app,
@@ -52,7 +52,7 @@ app.add_typer(domain_app, name="domain")
 app.add_typer(community_app, name="community")
 app.add_typer(skills_app, name="skills")
 app.add_typer(branch_app, name="branch")
-app.command(name="history")(history_cmd)
+app.add_typer(history_app, name="history")
 app.command(name="undo")(undo_cmd)
 
 

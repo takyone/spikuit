@@ -463,8 +463,45 @@ class Database:
         await self.delete_quiz_items_for_neuron(neuron_id)
         if self._embedding_dimension is not None:
             await self.delete_embedding(neuron_id)
+        await self.conn.execute(
+            "DELETE FROM neuron_predecessor WHERE child_id=? OR parent_id=?",
+            (neuron_id, neuron_id),
+        )
         await self.conn.execute("DELETE FROM neuron WHERE id=?", (neuron_id,))
         await self.conn.commit()
+
+    async def prune_retired_neurons(self) -> dict[str, int]:
+        """Physically delete every soft-retired neuron + its retired synapses.
+
+        Also drops dangling retired synapses whose endpoints are still live
+        (e.g. the result of ``soft_retire_synapse`` on its own). Preserves
+        event log and changeset rows untouched. Returns a summary dict.
+        """
+        # Count every retired synapse up-front — delete_neuron below removes
+        # those touching retired neurons along the way, so counting after
+        # the loop would miss them.
+        cur = await self.conn.execute(
+            "SELECT COUNT(*) FROM synapse WHERE retired_at IS NOT NULL"
+        )
+        retired_synapse_count = int((await cur.fetchone())[0])
+
+        retired_rows = await self.conn.execute_fetchall(
+            "SELECT id FROM neuron WHERE retired_at IS NOT NULL"
+        )
+        retired_ids = [r["id"] for r in retired_rows]
+        for nid in retired_ids:
+            await self.delete_neuron(nid)
+
+        # Drop any remaining retired synapses (endpoints still live).
+        await self.conn.execute(
+            "DELETE FROM synapse WHERE retired_at IS NOT NULL"
+        )
+        await self.conn.commit()
+
+        return {
+            "neurons_pruned": len(retired_ids),
+            "synapses_pruned": retired_synapse_count,
+        }
 
     async def soft_retire_neuron(
         self, neuron_id: str, at: str,
