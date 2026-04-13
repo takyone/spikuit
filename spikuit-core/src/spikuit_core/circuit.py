@@ -21,11 +21,19 @@ from .embedder import Embedder, EmbeddingType, vec_to_blob
 from .models import Grade, Neuron, Plasticity, QuizItem, QuizItemRole, ScaffoldLevel, Source, Spike, Synapse, SynapseConfidence, SynapseType
 from .propagation import compute_propagation, compute_stdp, decay_all_pressure
 from .transactions import (
+    OP_NEURON_RETIRE,
+    OP_SYNAPSE_RETIRE,
     ActorKind,
     SpikuitTransaction,
     TransactionAbortedError,
     TransactionNestingError,
 )
+
+
+def _neuron_snapshot_json(neuron: Neuron) -> str:
+    """Serialize a Neuron to a JSON snapshot for the event log."""
+    import msgspec
+    return msgspec.json.encode(neuron).decode()
 
 # Grade → FSRS Rating mapping
 _GRADE_TO_RATING: dict[Grade, Rating] = {
@@ -160,6 +168,24 @@ class Circuit:
     def current_transaction(self) -> SpikuitTransaction | None:
         """Return the active transaction, if any. Adapter-only API."""
         return self._current_tx
+
+    @asynccontextmanager
+    async def _auto_tx(
+        self, *, tag: str | None = None,
+    ) -> AsyncIterator[SpikuitTransaction]:
+        """Yield the current transaction, opening an implicit one if none.
+
+        Implicit transactions are tagged as system actors so adapter
+        consumers can distinguish them from explicit caller-driven
+        changesets.
+        """
+        if self._current_tx is not None:
+            yield self._current_tx
+            return
+        async with self.transaction(
+            tag=tag, actor_id="system", actor_kind="system",
+        ) as tx:
+            yield tx
 
     # -- Lifecycle ----------------------------------------------------------
 
@@ -305,8 +331,40 @@ class Circuit:
             await self._db.upsert_embedding(neuron.id, vec_to_blob(vec))
 
     async def remove_neuron(self, neuron_id: str) -> None:
+        """Soft-retire a neuron and cascade-retire its synapses.
+
+        The neuron row stays in the database with ``retired_at`` set,
+        preserving FSRS state and history. Its vector row is physically
+        deleted to keep ANN recall undegraded. Synapses touching the
+        neuron are cascade-retired. A ``neuron.retire`` event plus one
+        ``synapse.retire`` event per cascaded synapse are emitted in
+        the current (or implicit) transaction.
+        """
         self._guard_readonly()
-        await self._db.delete_neuron(neuron_id)
+        neuron = await self._db.get_neuron(neuron_id)
+        if neuron is None:
+            return  # already retired or never existed — idempotent
+        before = _neuron_snapshot_json(neuron)
+        async with self._auto_tx(tag="neuron.retire") as tx:
+            retired_at_ts = datetime.now(timezone.utc).isoformat()
+            retired_synapses = await self._db.soft_retire_neuron(
+                neuron_id, retired_at_ts,
+            )
+            tx.emit(
+                OP_NEURON_RETIRE,
+                "neuron",
+                neuron_id,
+                before_json=before,
+                after_json=None,
+            )
+            for (pre, post, stype) in retired_synapses:
+                tx.emit(
+                    OP_SYNAPSE_RETIRE,
+                    "synapse",
+                    f"{pre}|{post}|{stype}",
+                    before_json=None,
+                    after_json=None,
+                )
         if neuron_id in self._graph:
             self._graph.remove_node(neuron_id)
         self._cards.pop(neuron_id, None)
@@ -1346,13 +1404,20 @@ class Circuit:
         if not communities:
             return []
 
-        # Remove old community_summary neurons
+        # Remove old community_summary neurons. These are internal
+        # infrastructure rebuilt from scratch each run with deterministic
+        # IDs (cs-NNNN) — they are NOT user-visible knowledge and must
+        # not be soft-retired, or subsequent regeneration would collide
+        # on primary key. Bypass remove_neuron and hard-delete directly.
         old_summaries = [
             nid for nid in list(self._graph.nodes)
             if self._graph.nodes[nid].get("type") == "community_summary"
         ]
         for nid in old_summaries:
-            await self.remove_neuron(nid)
+            await self._db.delete_neuron(nid)
+            if nid in self._graph:
+                self._graph.remove_node(nid)
+            self._cards.pop(nid, None)
 
         results: list[dict] = []
         for cid, members in sorted(communities.items()):

@@ -377,10 +377,13 @@ class Database:
         )
         await self.conn.commit()
 
-    async def get_neuron(self, neuron_id: str) -> Neuron | None:
-        rows = await self.conn.execute_fetchall(
-            "SELECT * FROM neuron WHERE id = ?", (neuron_id,)
-        )
+    async def get_neuron(
+        self, neuron_id: str, *, include_retired: bool = False,
+    ) -> Neuron | None:
+        sql = "SELECT * FROM neuron WHERE id = ?"
+        if not include_retired:
+            sql += " AND retired_at IS NULL"
+        rows = await self.conn.execute_fetchall(sql, (neuron_id,))
         return _row_to_neuron(rows[0]) if rows else None
 
     async def list_neurons(
@@ -390,9 +393,12 @@ class Database:
         domain: str | None = None,
         limit: int = 100,
         offset: int = 0,
+        include_retired: bool = False,
     ) -> list[Neuron]:
         clauses: list[str] = []
         params: list[Any] = []
+        if not include_retired:
+            clauses.append("retired_at IS NULL")
         if type:
             clauses.append("type = ?")
             params.append(type)
@@ -424,6 +430,11 @@ class Database:
         await self.conn.commit()
 
     async def delete_neuron(self, neuron_id: str) -> None:
+        """Hard-delete a neuron and all its dependent rows.
+
+        Reachable only from ``spkt history prune`` (v0.7.0+). Circuit's
+        public ``remove_neuron`` always uses the soft path.
+        """
         await self.conn.execute(
             "DELETE FROM synapse WHERE pre=? OR post=?", (neuron_id, neuron_id)
         )
@@ -435,8 +446,44 @@ class Database:
         await self.conn.execute("DELETE FROM neuron WHERE id=?", (neuron_id,))
         await self.conn.commit()
 
-    async def count_neurons(self) -> int:
-        rows = await self.conn.execute_fetchall("SELECT COUNT(*) FROM neuron")
+    async def soft_retire_neuron(
+        self, neuron_id: str, at: str,
+    ) -> list[tuple[str, str, str]]:
+        """Mark a neuron and its synapses retired, drop its vector row.
+
+        Returns the list of (pre, post, type) for each synapse that was
+        cascade-retired, so the caller can emit synapse retire events.
+        FSRS state, spike history, and quiz item links are preserved.
+        """
+        cur = await self.conn.execute(
+            "SELECT pre, post, type FROM synapse "
+            "WHERE (pre=? OR post=?) AND retired_at IS NULL",
+            (neuron_id, neuron_id),
+        )
+        retired_keys = [(r["pre"], r["post"], r["type"]) async for r in cur]
+        await self.conn.execute(
+            "UPDATE synapse SET retired_at=? "
+            "WHERE (pre=? OR post=?) AND retired_at IS NULL",
+            (at, neuron_id, neuron_id),
+        )
+        await self.conn.execute(
+            "UPDATE neuron SET retired_at=? WHERE id=? AND retired_at IS NULL",
+            (at, neuron_id),
+        )
+        # Quiz items are private flashcard state, not part of the graph
+        # AMKB consumers see. Cascade-remove them so retired neurons stop
+        # generating quiz prompts.
+        await self.delete_quiz_items_for_neuron(neuron_id)
+        if self._embedding_dimension is not None:
+            await self.delete_embedding(neuron_id)
+        await self.conn.commit()
+        return retired_keys
+
+    async def count_neurons(self, *, include_retired: bool = False) -> int:
+        sql = "SELECT COUNT(*) FROM neuron"
+        if not include_retired:
+            sql += " WHERE retired_at IS NULL"
+        rows = await self.conn.execute_fetchall(sql)
         return rows[0][0]
 
     # -- Synapse CRUD -------------------------------------------------------
@@ -463,28 +510,40 @@ class Database:
         await self.conn.commit()
 
     async def get_synapse(
-        self, pre: str, post: str, type: SynapseType
+        self, pre: str, post: str, type: SynapseType,
+        *, include_retired: bool = False,
     ) -> Synapse | None:
-        rows = await self.conn.execute_fetchall(
-            "SELECT * FROM synapse WHERE pre=? AND post=? AND type=?",
-            (pre, post, type.value),
-        )
+        sql = "SELECT * FROM synapse WHERE pre=? AND post=? AND type=?"
+        if not include_retired:
+            sql += " AND retired_at IS NULL"
+        rows = await self.conn.execute_fetchall(sql, (pre, post, type.value))
         return _row_to_synapse(rows[0]) if rows else None
 
-    async def get_synapses_from(self, neuron_id: str) -> list[Synapse]:
-        rows = await self.conn.execute_fetchall(
-            "SELECT * FROM synapse WHERE pre=?", (neuron_id,)
-        )
+    async def get_synapses_from(
+        self, neuron_id: str, *, include_retired: bool = False,
+    ) -> list[Synapse]:
+        sql = "SELECT * FROM synapse WHERE pre=?"
+        if not include_retired:
+            sql += " AND retired_at IS NULL"
+        rows = await self.conn.execute_fetchall(sql, (neuron_id,))
         return [_row_to_synapse(r) for r in rows]
 
-    async def get_synapses_to(self, neuron_id: str) -> list[Synapse]:
-        rows = await self.conn.execute_fetchall(
-            "SELECT * FROM synapse WHERE post=?", (neuron_id,)
-        )
+    async def get_synapses_to(
+        self, neuron_id: str, *, include_retired: bool = False,
+    ) -> list[Synapse]:
+        sql = "SELECT * FROM synapse WHERE post=?"
+        if not include_retired:
+            sql += " AND retired_at IS NULL"
+        rows = await self.conn.execute_fetchall(sql, (neuron_id,))
         return [_row_to_synapse(r) for r in rows]
 
-    async def get_all_synapses(self) -> list[Synapse]:
-        rows = await self.conn.execute_fetchall("SELECT * FROM synapse")
+    async def get_all_synapses(
+        self, *, include_retired: bool = False,
+    ) -> list[Synapse]:
+        sql = "SELECT * FROM synapse"
+        if not include_retired:
+            sql += " WHERE retired_at IS NULL"
+        rows = await self.conn.execute_fetchall(sql)
         return [_row_to_synapse(r) for r in rows]
 
     async def update_synapse(self, synapse: Synapse) -> None:
@@ -912,13 +971,17 @@ class Database:
                 source_filters[k] = v
 
         # Start with all neuron IDs (or those matching neuron-level filters)
+        # retired_at IS NULL keeps soft-retired neurons out of retrieval.
         if neuron_filters:
             clauses = [f"{k} = ?" for k in neuron_filters]
+            clauses.append("retired_at IS NULL")
             sql = f"SELECT id FROM neuron WHERE {' AND '.join(clauses)}"
             rows = await self.conn.execute_fetchall(sql, tuple(neuron_filters.values()))
             result = {r["id"] for r in rows}
         else:
-            rows = await self.conn.execute_fetchall("SELECT id FROM neuron")
+            rows = await self.conn.execute_fetchall(
+                "SELECT id FROM neuron WHERE retired_at IS NULL"
+            )
             result = {r["id"] for r in rows}
 
         if not result or not source_filters:
@@ -993,10 +1056,11 @@ class Database:
         return results
 
     async def get_domain_counts(self) -> list[dict]:
-        """Get domain names with neuron counts."""
+        """Get domain names with neuron counts (live only)."""
         rows = await self.conn.execute_fetchall(
             """SELECT domain, COUNT(*) as count FROM neuron
                WHERE domain IS NOT NULL AND domain != ''
+                 AND retired_at IS NULL
                GROUP BY domain ORDER BY count DESC"""
         )
         return [{"domain": r["domain"], "count": r["count"]} for r in rows]
@@ -1045,9 +1109,10 @@ class Database:
         await self.conn.commit()
 
     async def get_community_ids(self) -> dict[str, int]:
-        """Return {neuron_id: community_id} for neurons with a community."""
+        """Return {neuron_id: community_id} for live neurons with a community."""
         rows = await self.conn.execute_fetchall(
-            "SELECT id, community_id FROM neuron WHERE community_id IS NOT NULL"
+            "SELECT id, community_id FROM neuron "
+            "WHERE community_id IS NOT NULL AND retired_at IS NULL"
         )
         return {r["id"]: r["community_id"] for r in rows}
 
