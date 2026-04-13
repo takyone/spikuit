@@ -406,6 +406,23 @@ class Database:
         rows = await self.conn.execute_fetchall(sql, (neuron_id,))
         return _row_to_neuron(rows[0]) if rows else None
 
+    async def get_neuron_retired_at(self, neuron_id: str) -> datetime | None:
+        """Return the soft-retire timestamp of a neuron, or ``None`` if live.
+
+        Returns ``None`` for both live neurons and neurons that do not
+        exist; callers needing to distinguish those cases should pair
+        this with :meth:`get_neuron(include_retired=True)`.
+        """
+        rows = await self.conn.execute_fetchall(
+            "SELECT retired_at FROM neuron WHERE id = ?", (neuron_id,),
+        )
+        if not rows:
+            return None
+        raw = rows[0]["retired_at"]
+        if raw is None:
+            return None
+        return datetime.fromisoformat(raw)
+
     async def list_neurons(
         self,
         *,
