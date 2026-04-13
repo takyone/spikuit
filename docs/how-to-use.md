@@ -39,8 +39,12 @@ spkt synapse add <http-id> <grpc-id> -t contrasts
 # What's due?
 spkt neuron due
 
-# Interactive flashcard session
+# Interactive flashcard session (Textual TUI)
+# Keys: Space=flip, 1-4=grade, n=note, q=quit
 spkt quiz
+
+# Agent-facing: batch-dump all due quiz payloads
+spkt quiz --json
 
 # Manual fire (after external review)
 spkt neuron fire <neuron-id> -g fire

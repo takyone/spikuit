@@ -376,12 +376,37 @@ spkt retrieve "GNN" --filter domain=cs --filter venue=NeurIPS
 ### `spkt quiz`
 
 インタラクティブなフラッシュカード復習セッション。
-理解度に応じた出題（Scaffold）で、セルフグレーディング形式です。
+理解度に応じた出題（Scaffold）で、Textual TUI 上でセルフグレーディングします。
 
 ```bash
-spkt quiz
+spkt quiz                 # Textual TUI（デフォルト）
 spkt quiz --limit 10
+spkt quiz --json          # 期限到来カードのRenderResponseを一括ダンプして終了
+spkt quiz --no-tui        # 標準入出力でJSONループ（1行=1カード）
 ```
+
+**TUIキー**
+
+| キー | 動作 |
+|------|------|
+| `Space` | カードをめくる（表↔裏） |
+| `1` | 成績: Forgot（忘れた／MISS） |
+| `2` | 成績: Uncertain（怪しい／WEAK） |
+| `3` | 成績: Got it（できた／FIRE） |
+| `4` | 成績: Perfect（完璧／STRONG） |
+| `n` | 現在のカードにノートを追加 |
+| `q` | セッションを終了 |
+
+`n` で入力したノートは `spike.notes` に保存され、将来の
+矛盾検知・フィードバックキュー等に活用されます。
+
+**エージェント向けモード**
+
+- `--json`: 期限到来カード全件の `{status, count, items: [RenderResponse...]}`
+  を一括出力。エージェント側でUIを描画する場合に使用。
+- `--no-tui`: 1カードごとに `RenderResponse` をstdoutに1行出力し、
+  stdinから `QuizResponse`（例: `{"self_grade": "FIRE", "notes": "..."}`）を
+  1行読む。`{"action": "quit"}` で途中終了。
 
 ## Brain健全性とインサイト
 

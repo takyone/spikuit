@@ -377,12 +377,38 @@ spkt retrieve "GNN" --filter domain=cs --filter venue=NeurIPS
 ### `spkt quiz`
 
 Interactive flashcard review session. Presents due neurons with
-scaffold-adaptive content and accepts self-grading.
+scaffold-adaptive content and accepts self-grading via a Textual TUI.
 
 ```bash
-spkt quiz
+spkt quiz                 # Textual TUI (default)
 spkt quiz --limit 10
+spkt quiz --json          # Batch-dump all due quiz render payloads, then exit
+spkt quiz --no-tui        # stdin/stdout JSON loop (one response per line)
 ```
+
+**TUI keys**
+
+| Key | Action |
+|-----|--------|
+| `Space` | Flip card (front ↔ back) |
+| `1` | Grade: Forgot (MISS) |
+| `2` | Grade: Uncertain (WEAK) |
+| `3` | Grade: Got it (FIRE) |
+| `4` | Grade: Perfect (STRONG) |
+| `n` | Add a note to the current card |
+| `q` | Quit session |
+
+Notes typed with `n` are persisted to `spike.notes` and unlock
+future features like conflict detection and feedback queues.
+
+**Agent-facing modes**
+
+- `--json` dumps `{status, count, items: [RenderResponse...]}` for all
+  due cards at once. Use this when the agent renders the UI itself.
+- `--no-tui` streams one `RenderResponse` JSON line per card to stdout
+  and reads one `QuizResponse` line from stdin (shape:
+  `{"self_grade": "FIRE", "notes": "..."}`). Send `{"action": "quit"}`
+  to stop early.
 
 ## Brain Health & Insights
 
