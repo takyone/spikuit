@@ -119,9 +119,12 @@ Milestone reordering is not required.
    Every existing test must stay green after each step.
 4. **v0.7.1 implementation.** Adapter in `spikuit-agents/amkb/`.
    Conformance suite wired up. CI job added.
-5. **Rebase on main.** If v0.6.3 or v0.6.4 have shipped by then,
-   rebase `amkb-integration` and re-run tests. Non-overlapping
-   areas mean rebase should be trivial.
+5. **Rebase on main.** If v0.6.3 has shipped by then, rebase
+   `amkb-integration` and re-run tests. Non-overlapping areas
+   mean rebase should be trivial. (The feature originally slated
+   for v0.6.4 — External SKILL.md import — is re-targeted to
+   v0.7.2 so it can land on top of the AMKB plumbing rather than
+   force a reversed-semver ordering; see Risks §1.)
 6. **PR + merge.** Two PRs (one per milestone) so review is
    chunked. Release notes call out "AMKB Protocol support is opt
    in; existing CLI usage is unchanged."
@@ -147,10 +150,16 @@ Milestone reordering is not required.
 
 ## Risks
 
-- **Rebase pain if v0.6.3/v0.6.4 touch `spikuit-core/db.py`.**
-  Low probability (both milestones are in different subsystems),
-  but we should land v0.7.0 before v0.6.4 if possible to keep
-  the migration sequence linear.
+- **Rebase pain if v0.6.3 touches `spikuit-core/db.py`.** v0.6.3
+  (TutorSession migration) is in a different subsystem so
+  overlap is unlikely. The originally planned v0.6.4 (External
+  SKILL.md import) **would** have touched `db.py` and landing
+  it before v0.7.0 creates a reversed-semver situation — you
+  cannot cut v0.6.4 after v0.7.0 has shipped without running
+  an LTS branch, which Spikuit does not. **Decision:** ship
+  AMKB plumbing as v0.7.0 first and re-target External SKILL.md
+  import to v0.7.2 so it lands on top of the new schema. The
+  v0.6.4 label is retired.
 - **Transaction wrapper complexity.** Buffering writes without
   breaking the async auto-commit model is the riskiest piece.
   Mitigation: ship the wrapper first, with its own pytest
