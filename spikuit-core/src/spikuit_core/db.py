@@ -116,7 +116,55 @@ CREATE TABLE IF NOT EXISTS neuron_source (
 
 CREATE INDEX IF NOT EXISTS idx_source_url ON source(url);
 CREATE INDEX IF NOT EXISTS idx_neuron_source_sid ON neuron_source(source_id);
+
+-- AMKB plumbing (v0.7.0): changeset/event log, lineage junction.
+-- Soft-retire columns for neuron/synapse live in _run_migrations
+-- because the base tables predate this feature.
+
+CREATE TABLE IF NOT EXISTS changeset (
+    id TEXT PRIMARY KEY,
+    tag TEXT,
+    actor_id TEXT NOT NULL,
+    actor_kind TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    committed_at TEXT,
+    status TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_changeset_committed_at ON changeset(committed_at);
+
+CREATE TABLE IF NOT EXISTS event (
+    id TEXT PRIMARY KEY,
+    changeset_id TEXT NOT NULL REFERENCES changeset(id),
+    seq INTEGER NOT NULL,
+    op TEXT NOT NULL,
+    target_kind TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    before_json TEXT,
+    after_json TEXT,
+    at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_changeset ON event(changeset_id, seq);
+CREATE INDEX IF NOT EXISTS idx_event_target ON event(target_kind, target_id);
+CREATE INDEX IF NOT EXISTS idx_event_at ON event(at);
+
+CREATE TABLE IF NOT EXISTS neuron_predecessor (
+    child_id TEXT NOT NULL REFERENCES neuron(id),
+    parent_id TEXT NOT NULL REFERENCES neuron(id),
+    at TEXT NOT NULL,
+    PRIMARY KEY (child_id, parent_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_neuron_predecessor_parent
+    ON neuron_predecessor(parent_id);
 """
+
+
+# Canonical live-row SQL fragments. Every SELECT on neuron / synapse that
+# serves live-state behavior MUST use these (see amkb-core-plumbing-spec §7).
+LIVE_NEURON = "n.retired_at IS NULL"
+LIVE_SYNAPSE = "s.retired_at IS NULL"
 
 
 # ---------------------------------------------------------------------------
@@ -163,6 +211,11 @@ class Database:
             "ALTER TABLE synapse ADD COLUMN confidence TEXT DEFAULT 'extracted'",
             "ALTER TABLE synapse ADD COLUMN confidence_score REAL DEFAULT 1.0",
             "ALTER TABLE spike ADD COLUMN notes TEXT",
+            # AMKB plumbing (v0.7.0): soft-retire columns.
+            "ALTER TABLE neuron ADD COLUMN retired_at TEXT",
+            "ALTER TABLE synapse ADD COLUMN retired_at TEXT",
+            "CREATE INDEX IF NOT EXISTS idx_neuron_retired_at ON neuron(retired_at)",
+            "CREATE INDEX IF NOT EXISTS idx_synapse_retired_at ON synapse(retired_at)",
         ]
         for sql in migrations:
             try:
