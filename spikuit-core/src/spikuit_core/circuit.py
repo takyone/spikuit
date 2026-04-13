@@ -776,6 +776,14 @@ class Circuit:
         """Get the FSRS Card for a neuron (from in-memory cache)."""
         return self._cards.get(neuron_id)
 
+    def _is_reviewable(self, neuron_id: str) -> bool:
+        """Skip auto-generated neurons (meta domain, community summaries)."""
+        node_data = self._graph.nodes.get(neuron_id, {})
+        return not (
+            node_data.get("domain") == "_meta"
+            or node_data.get("type") == "community_summary"
+        )
+
     async def due_neurons(
         self,
         *,
@@ -787,15 +795,36 @@ class Circuit:
             now = datetime.now(timezone.utc)
         due: list[str] = []
         for neuron_id, card in self._cards.items():
-            if card.due <= now:
-                # Skip auto-generated neurons — not reviewable
-                node_data = self._graph.nodes.get(neuron_id, {})
-                if node_data.get("domain") == "_meta" or node_data.get("type") == "community_summary":
-                    continue
+            if card.due <= now and self._is_reviewable(neuron_id):
                 due.append(neuron_id)
                 if len(due) >= limit:
                     break
         return due
+
+    async def near_due_neurons(
+        self,
+        *,
+        days_ahead: int = 2,
+        limit: int = 20,
+        exclude_ids: set[str] | None = None,
+        now: datetime | None = None,
+    ) -> list[str]:
+        """Return neuron IDs whose next review is within ``days_ahead`` days
+        but not yet due. Used by interleaving to pull near-due work from
+        other domains without breaking FSRS optimality significantly.
+        """
+        if now is None:
+            now = datetime.now(timezone.utc)
+        horizon = now + timedelta(days=days_ahead)
+        exclude_ids = exclude_ids or set()
+        near: list[tuple[datetime, str]] = []
+        for neuron_id, card in self._cards.items():
+            if neuron_id in exclude_ids:
+                continue
+            if now < card.due <= horizon and self._is_reviewable(neuron_id):
+                near.append((card.due, neuron_id))
+        near.sort(key=lambda x: x[0])
+        return [nid for _, nid in near[:limit]]
 
     # -- Pressure -----------------------------------------------------------
 

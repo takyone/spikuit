@@ -427,41 +427,57 @@ Split into "math-algebra" and "math-analysis"? [Y/n]
 
 For building custom integrations, agents, or LLM adapters.
 
-### AutoQuiz with Custom LLM
+### Quiz v2 — Flashcard and FreeResponse
 
 ```python
-from spikuit_core import AutoQuiz, Circuit, QuizItem, QuizRequest, Grade
+from spikuit_core import Circuit, Grade
+from spikuit_core.scaffold import compute_scaffold
+from spikuit_cli.quiz import Flashcard, FreeResponseQuiz, QuizResponse
 
-async def my_generate(req: QuizRequest) -> QuizItem:
-    prompt = f"Generate a question about neuron {req.primary}"
-    # ... call your LLM ...
-    return QuizItem(question=q, answer=a, hints=[h1, h2])
+neuron = await circuit.get_neuron("n1")
+scaffold = compute_scaffold(circuit, "n1")
 
-async def my_grade(item: QuizItem, response: str) -> Grade:
-    prompt = f"Grade this answer: {response}\nExpected: {item.answer}"
-    # ... call your LLM ...
-    return Grade.FIRE
+# Self-graded — no LLM
+fc = Flashcard(neuron, scaffold)
+result = fc.grade(QuizResponse(self_grade=Grade.FIRE))
 
-quiz = AutoQuiz(circuit, generate_fn=my_generate, grade_fn=my_grade)
+# Free-response — needs an LLMGrader
+fr = FreeResponseQuiz(neuron, scaffold)
+raw = fr.grade(QuizResponse(answer="my answer"))
+assert raw.needs_tutor_grading
 ```
 
-### TutorSession
+### TutorSession + ExamPlan
 
 ```python
-from spikuit_core import TutorSession, AutoQuiz, Flashcard
+from spikuit_cli.tutor import plan_exam, TutorSession
 
-# With Flashcard (no LLM needed)
-tutor = TutorSession(circuit, quiz=Flashcard(circuit))
-
-# With AutoQuiz (LLM-powered)
-tutor = TutorSession(
+plan = await plan_exam(
     circuit,
-    learn=AutoQuiz(circuit, generate_fn=my_generate, grade_fn=my_grade),
+    neuron_ids=["n1", "n2"],
+    elaborate_on_correct=True,
+    require_mastery=True,
 )
+sess = TutorSession(circuit, plan)
+step = await sess.teach()
+tr = await sess.record_response(QuizResponse(self_grade=Grade.FIRE))
+await sess.advance()
+```
 
-queue = await tutor.start(limit=5)
-state = await tutor.teach()
-state = await tutor.respond("my answer")
+### LLMGrader (free-response grading)
+
+```python
+from spikuit_agents.tutor import AgentLLMGrader
+
+async def my_grade_fn(prompt: str) -> str:
+    # call any LLM backend; return JSON string
+    return '{"grade": 3, "correctness": 0.8, "feedback": "ok"}'
+
+grader = AgentLLMGrader(my_grade_fn)
+final = await grader.grade_free_response(
+    question=q, rubric=r, canonical_answer=c, student_response=s,
+)
+await sess.record_llm_graded(final)
 ```
 
 ### QABotSession

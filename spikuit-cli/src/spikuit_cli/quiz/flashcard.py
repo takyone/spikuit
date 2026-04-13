@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 from spikuit_core import Grade, ScaffoldLevel
 
+from ._content import extract_body, extract_title
 from .base import BaseQuiz
 from .models import GradeChoice, QuizResponse, QuizResult, RenderedContent
 
@@ -24,26 +25,6 @@ FLASHCARD_GRADE_CHOICES: list[GradeChoice] = [
     GradeChoice(key="3", grade=Grade.FIRE, label="Got it"),
     GradeChoice(key="4", grade=Grade.STRONG, label="Perfect"),
 ]
-
-
-def _extract_title(content: str) -> str:
-    for line in content.splitlines():
-        line = line.strip()
-        if line.startswith("# "):
-            return line[2:].strip()
-    return ""
-
-
-def _extract_body(content: str) -> str:
-    text = content
-    if text.startswith("---"):
-        parts = text.split("---", 2)
-        if len(parts) >= 3:
-            text = parts[2]
-    lines = text.strip().splitlines()
-    if lines and lines[0].strip().startswith("# "):
-        lines = lines[1:]
-    return "\n".join(lines).strip()
 
 
 def _first_paragraph(body: str) -> str:
@@ -65,8 +46,8 @@ class Flashcard(BaseQuiz):
         super().__init__()
         self.neuron = neuron
         self.scaffold = scaffold
-        self._title = _extract_title(neuron.content)
-        self._body = _extract_body(neuron.content)
+        self._title = extract_title(neuron.content)
+        self._body = extract_body(neuron.content)
 
     def front(self) -> RenderedContent:
         level = self.scaffold.level

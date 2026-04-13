@@ -1,6 +1,6 @@
 [project]
 name = "spikuit-core"
-version = "0.6.2"
+version = "0.6.3"
 description = "Core engine: FSRS scheduling + Knowledge Graph + Spreading Activation"
 readme = "README.md"
 license = "Apache-2.0"

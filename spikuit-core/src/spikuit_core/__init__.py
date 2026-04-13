@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-__version__ = "0.6.1"
+__version__ = "0.6.3"
 
 # -- Always available (lightweight) ---------------------------------------
 
@@ -46,7 +46,6 @@ _ENGINE_SYMBOLS: dict[str, tuple[str, str]] = {
     "init_brain": ("config", "init_brain"),
     "load_config": ("config", "load_config"),
     # models
-    "ExamResult": ("models", "ExamResult"),
     "Grade": ("models", "Grade"),
     "Neuron": ("models", "Neuron"),
     "Plasticity": ("models", "Plasticity"),
@@ -61,27 +60,18 @@ _ENGINE_SYMBOLS: dict[str, tuple[str, str]] = {
     "Synapse": ("models", "Synapse"),
     "SynapseConfidence": ("models", "SynapseConfidence"),
     "SynapseType": ("models", "SynapseType"),
-    "TutorAction": ("models", "TutorAction"),
     "strip_frontmatter": ("models", "strip_frontmatter"),
-    # quiz
-    "AutoQuiz": ("quiz", "AutoQuiz"),
-    "Flashcard": ("quiz", "Flashcard"),
-    "Quiz": ("quiz", "Quiz"),
     # scaffold
     "compute_scaffold": ("scaffold", "compute_scaffold"),
     # session
     "IngestSession": ("session", "IngestSession"),
     "QABotSession": ("session", "QABotSession"),
     "Session": ("session", "Session"),
-    # tutor
-    "TutorSession": ("tutor", "TutorSession"),
-    "TutorState": ("tutor", "TutorState"),
 }
 
 
 # Deprecated alias → canonical name. Removed in v0.7.
 _DEPRECATED_ALIASES: dict[str, str] = {
-    "Learn": "Quiz",
     "LearnSession": "IngestSession",
 }
 
@@ -123,9 +113,7 @@ def __dir__() -> list[str]:
 if TYPE_CHECKING:
     from .circuit import Circuit, ReadOnlyError
     from .config import init_brain, load_config
-    from .quiz import AutoQuiz, Flashcard, Quiz
     from .models import (
-        ExamResult,
         Grade,
         Neuron,
         Plasticity,
@@ -140,12 +128,10 @@ if TYPE_CHECKING:
         Synapse,
         SynapseConfidence,
         SynapseType,
-        TutorAction,
         strip_frontmatter,
     )
     from .scaffold import compute_scaffold
     from .session import IngestSession, QABotSession, Session
-    from .tutor import TutorSession, TutorState
 
 
 __all__ = [
