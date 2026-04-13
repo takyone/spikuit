@@ -254,6 +254,105 @@ class Database:
             await self._conn.close()
             self._conn = None
 
+    # -- AMKB changeset / event log (v0.7.0) --------------------------------
+
+    async def insert_changeset_open(
+        self,
+        *,
+        changeset_id: str,
+        tag: str | None,
+        actor_id: str,
+        actor_kind: str,
+        started_at: str,
+    ) -> None:
+        await self.conn.execute(
+            "INSERT INTO changeset "
+            "(id, tag, actor_id, actor_kind, started_at, status) "
+            "VALUES (?, ?, ?, ?, ?, 'open')",
+            (changeset_id, tag, actor_id, actor_kind, started_at),
+        )
+        await self.conn.commit()
+
+    async def commit_changeset(
+        self,
+        changeset_id: str,
+        *,
+        events: list[tuple[str, str, str, str | None, str | None, str]],
+        committed_at: str,
+    ) -> None:
+        """Flush buffered events and mark the changeset committed.
+
+        Each event tuple is (op, target_kind, target_id, before_json,
+        after_json, at).
+        """
+        import uuid
+
+        for seq, (op, kind, tid, before, after, at) in enumerate(events):
+            await self.conn.execute(
+                "INSERT INTO event "
+                "(id, changeset_id, seq, op, target_kind, target_id, "
+                "before_json, after_json, at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    f"ev_{uuid.uuid4().hex[:12]}",
+                    changeset_id,
+                    seq,
+                    op,
+                    kind,
+                    tid,
+                    before,
+                    after,
+                    at,
+                ),
+            )
+        await self.conn.execute(
+            "UPDATE changeset SET status='committed', committed_at=? WHERE id=?",
+            (committed_at, changeset_id),
+        )
+        await self.conn.commit()
+
+    async def abort_changeset(self, changeset_id: str) -> None:
+        await self.conn.execute(
+            "UPDATE changeset SET status='aborted' WHERE id=?",
+            (changeset_id,),
+        )
+        await self.conn.commit()
+
+    async def get_changeset(self, changeset_id: str) -> dict | None:
+        cur = await self.conn.execute(
+            "SELECT id, tag, actor_id, actor_kind, started_at, "
+            "committed_at, status FROM changeset WHERE id=?",
+            (changeset_id,),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+    async def list_events(
+        self,
+        *,
+        changeset_id: str | None = None,
+        target_id: str | None = None,
+        limit: int = 1000,
+    ) -> list[dict]:
+        clauses = []
+        params: list[object] = []
+        if changeset_id is not None:
+            clauses.append("changeset_id = ?")
+            params.append(changeset_id)
+        if target_id is not None:
+            clauses.append("target_id = ?")
+            params.append(target_id)
+        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        params.append(limit)
+        cur = await self.conn.execute(
+            "SELECT id, changeset_id, seq, op, target_kind, target_id, "
+            "before_json, after_json, at FROM event"
+            + where
+            + " ORDER BY at, seq LIMIT ?",
+            tuple(params),
+        )
+        return [dict(row) async for row in cur]
+
     @property
     def conn(self) -> aiosqlite.Connection:
         if self._conn is None:

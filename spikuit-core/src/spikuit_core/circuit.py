@@ -8,8 +8,10 @@ the in-memory NetworkX graph, and exposes all operations external layers
 from __future__ import annotations
 
 import hashlib
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import AsyncIterator
 
 import networkx as nx
 from fsrs import Card, Rating, Scheduler
@@ -18,6 +20,12 @@ from .db import DEFAULT_DB_PATH, Database
 from .embedder import Embedder, EmbeddingType, vec_to_blob
 from .models import Grade, Neuron, Plasticity, QuizItem, QuizItemRole, ScaffoldLevel, Source, Spike, Synapse, SynapseConfidence, SynapseType
 from .propagation import compute_propagation, compute_stdp, decay_all_pressure
+from .transactions import (
+    ActorKind,
+    SpikuitTransaction,
+    TransactionAbortedError,
+    TransactionNestingError,
+)
 
 # Grade → FSRS Rating mapping
 _GRADE_TO_RATING: dict[Grade, Rating] = {
@@ -76,11 +84,82 @@ class Circuit:
         self._scheduler: Scheduler = Scheduler()
         self._cards: dict[str, Card] = {}  # neuron_id → FSRS Card (in-memory cache)
         self.plasticity: Plasticity = plasticity or Plasticity()
+        self._current_tx: SpikuitTransaction | None = None
 
     def _guard_readonly(self) -> None:
         """Raise ReadOnlyError if Circuit is in read-only mode."""
         if self._read_only:
             raise ReadOnlyError("Circuit is in read-only mode")
+
+    # -- AMKB transactions (v0.7.0) -----------------------------------------
+
+    @asynccontextmanager
+    async def transaction(
+        self,
+        *,
+        tag: str | None = None,
+        actor_id: str,
+        actor_kind: ActorKind = "agent",
+    ) -> AsyncIterator[SpikuitTransaction]:
+        """Open an explicit changeset.
+
+        All mutations performed inside the block (in v0.7.0+ commits)
+        are buffered as events and flushed atomically on exit. Raising
+        an exception aborts the changeset.
+
+        Args:
+            tag: Caller-supplied label, e.g. "ingest:papers-2026".
+            actor_id: Free-form identifier of who initiated the change.
+            actor_kind: One of "human", "agent", "system".
+
+        Raises:
+            TransactionNestingError: If a transaction is already active
+                on this Circuit (nested transactions are not supported
+                in v0.7.0).
+        """
+        self._guard_readonly()
+        if self._current_tx is not None:
+            raise TransactionNestingError(
+                f"transaction {self._current_tx.id} already active"
+            )
+        tx = SpikuitTransaction.open(
+            tag=tag, actor_id=actor_id, actor_kind=actor_kind,
+        )
+        await self._db.insert_changeset_open(
+            changeset_id=tx.id,
+            tag=tx.tag,
+            actor_id=tx.actor_id,
+            actor_kind=tx.actor_kind,
+            started_at=tx.started_at,
+        )
+        self._current_tx = tx
+        try:
+            yield tx
+        except BaseException:
+            tx.status = "aborted"
+            self._current_tx = None
+            await self._db.abort_changeset(tx.id)
+            raise
+        # Success path: flush buffered events and mark committed.
+        self._current_tx = None
+        events = [
+            (
+                e.op, e.target_kind, e.target_id,
+                e.before_json, e.after_json, e.at,
+            )
+            for e in tx.events
+        ]
+        await self._db.commit_changeset(
+            tx.id,
+            events=events,
+            committed_at=datetime.now(timezone.utc).isoformat(),
+        )
+        tx.status = "committed"
+
+    @property
+    def current_transaction(self) -> SpikuitTransaction | None:
+        """Return the active transaction, if any. Adapter-only API."""
+        return self._current_tx
 
     # -- Lifecycle ----------------------------------------------------------
 
