@@ -114,3 +114,42 @@ async def test_two_sequential_transactions(circuit):
     assert tx1.id != tx2.id
     all_events = await circuit._db.list_events()
     assert {e["target_id"] for e in all_events} == {"n1", "n2"}
+
+
+@pytest.mark.asyncio
+async def test_list_changesets_filters(circuit):
+    async with circuit.transaction(actor_id="alice", tag="ingest:a") as tx_a:
+        tx_a.emit(OP_NEURON_ADD, "neuron", "n1")
+    async with circuit.transaction(actor_id="bob", tag="ingest:b") as tx_b:
+        tx_b.emit(OP_NEURON_ADD, "neuron", "n2")
+    async with circuit.transaction(actor_id="alice", tag="review") as tx_c:
+        tx_c.emit(OP_NEURON_ADD, "neuron", "n3")
+
+    # Open an uncommitted tx via an abort to confirm the default
+    # status="committed" filter hides it.
+    with pytest.raises(RuntimeError):
+        async with circuit.transaction(actor_id="alice") as tx_d:
+            raise RuntimeError("rollback")
+    assert tx_d.status == "aborted"
+
+    all_committed = await circuit._db.list_changesets()
+    ids = {c["id"] for c in all_committed}
+    assert ids == {tx_a.id, tx_b.id, tx_c.id}
+    assert all(c["status"] == "committed" for c in all_committed)
+    # Ordered by committed_at ascending.
+    committed_order = [c["id"] for c in all_committed]
+    assert committed_order == [tx_a.id, tx_b.id, tx_c.id]
+
+    by_actor = await circuit._db.list_changesets(actor_id="alice")
+    assert {c["id"] for c in by_actor} == {tx_a.id, tx_c.id}
+
+    by_tag = await circuit._db.list_changesets(tag="ingest:b")
+    assert {c["id"] for c in by_tag} == {tx_b.id}
+
+    with_aborted = await circuit._db.list_changesets(status=None)
+    assert tx_d.id in {c["id"] for c in with_aborted}
+
+    # Time range: pick the middle row's committed_at as a lower bound.
+    middle = all_committed[1]["committed_at"]
+    since_middle = await circuit._db.list_changesets(since=middle)
+    assert {c["id"] for c in since_middle} == {tx_b.id, tx_c.id}

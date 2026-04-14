@@ -327,6 +327,55 @@ class Database:
         row = await cur.fetchone()
         return dict(row) if row else None
 
+    async def list_changesets(
+        self,
+        *,
+        since: str | None = None,
+        until: str | None = None,
+        actor_id: str | None = None,
+        tag: str | None = None,
+        status: str | None = "committed",
+        limit: int = 1000,
+    ) -> list[dict]:
+        """List changesets filtered by time range / actor / tag / status.
+
+        Timestamps are ISO-8601 strings; comparison is lexical (ISO-8601
+        is designed to sort correctly). ``status`` defaults to
+        ``"committed"`` so callers driving history views do not see
+        in-flight or aborted changesets. Pass ``status=None`` to include
+        every row.
+
+        Ordering is by ``committed_at`` ascending — matches the event log
+        ordering in :meth:`list_events`.
+        """
+        clauses: list[str] = []
+        params: list[object] = []
+        if status is not None:
+            clauses.append("status = ?")
+            params.append(status)
+        if since is not None:
+            clauses.append("committed_at >= ?")
+            params.append(since)
+        if until is not None:
+            clauses.append("committed_at <= ?")
+            params.append(until)
+        if actor_id is not None:
+            clauses.append("actor_id = ?")
+            params.append(actor_id)
+        if tag is not None:
+            clauses.append("tag = ?")
+            params.append(tag)
+        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        params.append(limit)
+        cur = await self.conn.execute(
+            "SELECT id, tag, actor_id, actor_kind, started_at, "
+            "committed_at, status FROM changeset"
+            + where
+            + " ORDER BY committed_at LIMIT ?",
+            tuple(params),
+        )
+        return [dict(row) async for row in cur]
+
     async def list_events(
         self,
         *,
