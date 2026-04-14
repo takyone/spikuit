@@ -1258,6 +1258,8 @@ class Database:
 
 
 def _row_to_neuron(row: aiosqlite.Row) -> Neuron:
+    keys = row.keys()
+    retired_raw = row["retired_at"] if "retired_at" in keys else None
     return Neuron(
         id=row["id"],
         content=row["content"],
@@ -1266,6 +1268,7 @@ def _row_to_neuron(row: aiosqlite.Row) -> Neuron:
         source=row["source"],
         created_at=_parse_ts(row["created_at"]),
         updated_at=_parse_ts(row["updated_at"]),
+        retired_at=_parse_ts(retired_raw) if retired_raw else None,
     )
 
 
@@ -1273,6 +1276,7 @@ def _row_to_synapse(row: aiosqlite.Row) -> Synapse:
     keys = row.keys()
     confidence_raw = row["confidence"] if "confidence" in keys else "extracted"
     confidence_score = row["confidence_score"] if "confidence_score" in keys else 1.0
+    retired_raw = row["retired_at"] if "retired_at" in keys else None
     return Synapse(
         pre=row["pre"],
         post=row["post"],
@@ -1284,6 +1288,7 @@ def _row_to_synapse(row: aiosqlite.Row) -> Synapse:
         confidence_score=confidence_score,
         created_at=_parse_ts(row["created_at"]),
         updated_at=_parse_ts(row["updated_at"]),
+        retired_at=_parse_ts(retired_raw) if retired_raw else None,
     )
 
 
@@ -1309,6 +1314,11 @@ def _row_to_source(row: aiosqlite.Row) -> Source:
         http_last_modified=row["http_last_modified"] if "http_last_modified" in keys else None,
         status=row["status"] if "status" in keys and row["status"] else "active",
         created_at=_parse_ts(row["created_at"]),
+        retired_at=(
+            _parse_ts(row["retired_at"])
+            if "retired_at" in keys and row["retired_at"]
+            else None
+        ),
     )
 
 

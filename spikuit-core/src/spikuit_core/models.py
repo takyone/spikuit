@@ -98,6 +98,7 @@ class Neuron(msgspec.Struct, kw_only=True):
     source: str | None = None
     created_at: datetime = msgspec.UNSET  # type: ignore[assignment]
     updated_at: datetime = msgspec.UNSET  # type: ignore[assignment]
+    retired_at: datetime | None = None
 
     def __post_init__(self) -> None:
         now = datetime.now(timezone.utc)
@@ -164,6 +165,7 @@ class Synapse(msgspec.Struct, kw_only=True):
     confidence_score: float = 1.0
     created_at: datetime = msgspec.UNSET  # type: ignore[assignment]
     updated_at: datetime = msgspec.UNSET  # type: ignore[assignment]
+    retired_at: datetime | None = None
 
     def __post_init__(self) -> None:
         now = datetime.now(timezone.utc)
@@ -440,6 +442,7 @@ class Source(msgspec.Struct, kw_only=True):
     http_last_modified: str | None = None
     status: str = "active"
     created_at: datetime = msgspec.UNSET  # type: ignore[assignment]
+    retired_at: datetime | None = None
 
     def __post_init__(self) -> None:
         if not self.id:
