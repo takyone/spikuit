@@ -24,6 +24,15 @@ __version__ = "0.6.3"
 # -- Always available (lightweight) ---------------------------------------
 
 from .config import BrainConfig, EmbedderConfig, find_spikuit_root
+from .errors import (
+    DBNotConnected,
+    InvalidMergeTarget,
+    NeuronAlreadyRetired,
+    NeuronNotFound,
+    SourceNotFound,
+    SpikuitError,
+    SynapseNotFound,
+)
 from .embedder import (
     Embedder,
     EmbeddingType,
@@ -137,17 +146,24 @@ if TYPE_CHECKING:
 __all__ = [
     # Always available
     "BrainConfig",
+    "DBNotConnected",
     "Embedder",
     "EmbedderConfig",
     "EmbedderConfigError",
     "EmbedderSpec",
     "EmbeddingType",
+    "InvalidMergeTarget",
     "ModelSpec",
+    "NeuronAlreadyRetired",
+    "NeuronNotFound",
     "NullEmbedder",
     "OllamaEmbedder",
     "OpenAICompatEmbedder",
     "QABot",
     "RetrievalHit",
+    "SourceNotFound",
+    "SpikuitError",
+    "SynapseNotFound",
     "create_embedder",
     "find_spikuit_root",
     # Engine (lazy)

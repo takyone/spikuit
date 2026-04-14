@@ -10,6 +10,7 @@ from typing import Any
 import aiosqlite
 import sqlite_vec
 
+from .errors import DBNotConnected
 from .models import Grade, Neuron, QuizItem, QuizItemRole, ScaffoldLevel, Source, Spike, Synapse, SynapseConfidence, SynapseType
 
 DEFAULT_DB_PATH: Path = Path.home() / ".spikuit" / "spikuit.db"
@@ -425,7 +426,9 @@ class Database:
     @property
     def conn(self) -> aiosqlite.Connection:
         if self._conn is None:
-            raise RuntimeError("Database not connected. Call connect() first.")
+            raise DBNotConnected(
+                "Database not connected. Call connect() first."
+            )
         return self._conn
 
     # -- Neuron CRUD --------------------------------------------------------

@@ -39,8 +39,7 @@ OP_SYNAPSE_UPDATE = "synapse.update"
 OP_SYNAPSE_RETIRE = "synapse.retire"
 
 
-class SpikuitError(Exception):
-    """Base class for Spikuit core errors."""
+from .errors import SpikuitError
 
 
 class TransactionNestingError(SpikuitError):

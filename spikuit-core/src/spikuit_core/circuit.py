@@ -33,6 +33,11 @@ from .transactions import (
     TransactionAbortedError,
     TransactionNestingError,
 )
+from .errors import (
+    InvalidMergeTarget,
+    NeuronNotFound,
+    SynapseNotFound,
+)
 
 
 def _neuron_snapshot_json(neuron: Neuron) -> str:
@@ -480,7 +485,7 @@ class Circuit:
         """
         self._guard_readonly()
         if pre not in self._graph or post not in self._graph:
-            raise ValueError(
+            raise NeuronNotFound(
                 f"Both neurons must exist in the circuit. "
                 f"pre={pre!r} exists={pre in self._graph}, "
                 f"post={post!r} exists={post in self._graph}"
@@ -615,7 +620,9 @@ class Circuit:
         self._guard_readonly()
         synapse = await self._db.get_synapse(pre, post, type)
         if synapse is None:
-            raise ValueError(f"Synapse not found: {pre!r} → {post!r} ({type.value})")
+            raise SynapseNotFound(
+                f"Synapse not found: {pre!r} → {post!r} ({type.value})"
+            )
         before = _synapse_snapshot_json(synapse)
         async with self._auto_tx(tag="synapse.weight") as tx:
             synapse.weight = weight
@@ -653,17 +660,23 @@ class Circuit:
         self._guard_readonly()
 
         if into_id in source_ids:
-            raise ValueError("into_id must not be in source_ids")
+            raise InvalidMergeTarget(
+                f"into_id must not be in source_ids: {into_id!r}"
+            )
 
         target = await self._db.get_neuron(into_id)
         if target is None:
-            raise ValueError(f"Target neuron not found: {into_id!r}")
+            raise InvalidMergeTarget(
+                f"Merge target neuron not found: {into_id!r}"
+            )
 
         sources_to_merge = []
         for sid in source_ids:
             n = await self._db.get_neuron(sid)
             if n is None:
-                raise ValueError(f"Source neuron not found: {sid!r}")
+                raise NeuronNotFound(
+                    f"Source neuron not found during merge: {sid!r}"
+                )
             sources_to_merge.append(n)
 
         async with self._auto_tx(tag="neuron.merge") as tx:

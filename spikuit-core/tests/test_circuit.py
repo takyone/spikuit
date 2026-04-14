@@ -3,7 +3,18 @@
 import pytest
 import pytest_asyncio
 
-from spikuit_core import Circuit, Grade, Neuron, Source, Spike, SynapseConfidence, SynapseType
+from spikuit_core import (
+    Circuit,
+    Grade,
+    InvalidMergeTarget,
+    Neuron,
+    NeuronNotFound,
+    Source,
+    Spike,
+    SynapseConfidence,
+    SynapseNotFound,
+    SynapseType,
+)
 
 
 @pytest_asyncio.fixture
@@ -129,7 +140,7 @@ async def test_remove_bidirectional_synapse(circuit):
 
 @pytest.mark.asyncio
 async def test_synapse_requires_existing_neurons(circuit):
-    with pytest.raises(ValueError, match="Both neurons must exist"):
+    with pytest.raises(NeuronNotFound, match="Both neurons must exist"):
         await circuit.add_synapse("fake-1", "fake-2", SynapseType.RELATES_TO)
 
 
@@ -510,7 +521,7 @@ async def test_set_synapse_weight(circuit):
 
 @pytest.mark.asyncio
 async def test_set_synapse_weight_not_found(circuit):
-    with pytest.raises(ValueError, match="Synapse not found"):
+    with pytest.raises(SynapseNotFound, match="Synapse not found"):
         await circuit.set_synapse_weight("x", "y", SynapseType.REQUIRES, 0.5)
 
 
@@ -602,7 +613,7 @@ async def test_merge_neurons_into_id_in_sources_raises(circuit):
     n1 = Neuron.create("# A")
     await circuit.add_neuron(n1)
 
-    with pytest.raises(ValueError, match="into_id must not be in source_ids"):
+    with pytest.raises(InvalidMergeTarget, match="into_id must not be in source_ids"):
         await circuit.merge_neurons([n1.id], into_id=n1.id)
 
 

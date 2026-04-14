@@ -6,6 +6,7 @@ import pytest
 import pytest_asyncio
 
 from spikuit_core.circuit import Circuit
+from spikuit_core.errors import InvalidMergeTarget
 from spikuit_core.models import Neuron
 from spikuit_core.transactions import OP_NEURON_MERGE, OP_NEURON_RETIRE
 
@@ -81,5 +82,5 @@ async def test_predecessors_empty_for_plain_neuron(circuit):
 async def test_merge_rejects_into_in_sources(circuit):
     t = Neuron.create("T")
     await circuit.add_neuron(t)
-    with pytest.raises(ValueError):
+    with pytest.raises(InvalidMergeTarget):
         await circuit.merge_neurons([t.id], t.id)
