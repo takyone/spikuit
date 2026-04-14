@@ -35,7 +35,7 @@ from amkb.refs import EdgeRef, NodeRef
 from amkb.snapshots import edge_snapshot, node_snapshot
 from amkb.types import Event
 
-from spikuit_core.models import Neuron, Synapse, SynapseType
+from spikuit_core.models import Neuron, Source, Synapse, SynapseType
 from spikuit_core.transactions import (
     OP_NEURON_ADD,
     OP_NEURON_MERGE,
@@ -50,8 +50,18 @@ from spikuit_agents.amkb.mapping import (
     edge_ref_for_synapse,
     neuron_node_ref,
     neuron_to_node,
+    source_node_ref,
+    source_to_node,
     synapse_to_edge,
 )
+
+# Adapter-private op strings for source lifecycle events. The v0.7.0
+# event log does not emit these from the core; the v0.7.1 adapter's
+# transaction wrapper injects them manually via current_transaction.emit
+# so the AMKB change-set rehydration still sees ``node.created`` /
+# ``node.retired`` for Source nodes.
+OP_SOURCE_ADD = "source.add"
+OP_SOURCE_RETIRE = "source.retire"
 
 if TYPE_CHECKING:
     from spikuit_core import Circuit
@@ -81,6 +91,14 @@ def _neuron_snapshot_from_json(raw: str | None) -> dict[str, Any] | None:
         return None
     neuron = msgspec.json.decode(raw, type=Neuron)
     return node_snapshot(neuron_to_node(neuron))
+
+
+def _source_snapshot_from_json(raw: str | None) -> dict[str, Any] | None:
+    """Decode a stored source snapshot JSON into an AMKB node_snapshot dict."""
+    if raw is None:
+        return None
+    source = msgspec.json.decode(raw, type=Source)
+    return node_snapshot(source_to_node(source))
 
 
 def _synapse_snapshot_from_json(raw: str | None) -> dict[str, Any] | None:
@@ -156,7 +174,7 @@ async def translate_event_row(row: dict[str, Any], *, circuit: "Circuit") -> Eve
             before = _neuron_snapshot_from_json(before_json)
             if after_json is not None:
                 merge_payload = json.loads(after_json)
-                meta["ancestors"] = merge_payload.get("ancestors", [])
+                meta["ancestors"] = merge_payload.get("sources", [])
                 merged_after = merge_payload.get("after")
                 if merged_after is not None:
                     after = _neuron_snapshot_from_json(
@@ -183,6 +201,29 @@ async def translate_event_row(row: dict[str, Any], *, circuit: "Circuit") -> Eve
             after=after,
             meta=meta,
         )
+
+    # -- Source-side ops ---------------------------------------------
+    if target_kind == "source":
+        if op == OP_SOURCE_ADD:
+            after = _source_snapshot_from_json(after_json)
+            if after is None:
+                return None
+            return Event(
+                kind="node.created",  # type: ignore[arg-type]
+                target=source_node_ref(target_id),
+                before=None,
+                after=after,
+            )
+        if op == OP_SOURCE_RETIRE:
+            before = _source_snapshot_from_json(before_json)
+            after = _source_snapshot_from_json(after_json)
+            return Event(
+                kind="node.retired",  # type: ignore[arg-type]
+                target=source_node_ref(target_id),
+                before=before,
+                after=after,
+            )
+        return None
 
     # -- Synapse-side ops --------------------------------------------
     if target_kind == "synapse":

@@ -30,8 +30,14 @@ immediately (autocommit), so staged reads see through the buffer.
 
 from __future__ import annotations
 
+import uuid
+from datetime import datetime, timezone
 from types import TracebackType
 from typing import TYPE_CHECKING, Any
+
+
+def _hex12() -> str:
+    return uuid.uuid4().hex[:12]
 
 from amkb.errors import EConstraint, ETransactionClosed
 from amkb.refs import EdgeRef, NodeRef, TransactionRef
@@ -40,6 +46,8 @@ from amkb.types import (
     KIND_SOURCE,
     LAYER_CONCEPT,
     LAYER_SOURCE,
+    REL_ATTESTED_BY,
+    REL_CONTRADICTED_BY,
     REL_DERIVED_FROM,
 )
 from amkb.validation import (
@@ -49,14 +57,18 @@ from amkb.validation import (
     validate_merge_uniform,
 )
 
-from spikuit_core.models import Neuron, SynapseType
+import msgspec
 
+from spikuit_core.models import Neuron, Source, SynapseType
+
+from spikuit_agents.amkb._events import OP_SOURCE_ADD, OP_SOURCE_RETIRE
 from spikuit_agents.amkb.errors import boundary
 from spikuit_agents.amkb.mapping import (
     SYNAPSE_TYPE_TO_REL,
     edge_ref_for_synapse,
     junction_edge_ref,
     neuron_node_ref,
+    source_node_ref,
 )
 
 if TYPE_CHECKING:
@@ -109,8 +121,15 @@ class SpikuitTransaction:
     # -- Context manager -----------------------------------------------
 
     def __enter__(self) -> "SpikuitTransaction":
+        if self._closed:
+            raise ETransactionClosed(f"transaction {self.ref} is already closed")
         if self._tx_ctx is not None:
-            raise EConstraint("SpikuitTransaction is not re-entrant")
+            # Idempotent — store.begin() already opened the core tx so
+            # the ``with`` block's enter is a no-op.
+            return self
+        # Spikuit core only accepts "human" | "agent" | "system". Anything
+        # else (LLM, automation, composite) collapses to "agent" so the
+        # event row still carries the original actor.id verbatim.
         actor_kind = self._actor_obj.kind
         if actor_kind not in ("human", "agent", "system"):
             actor_kind = "agent"
@@ -229,17 +248,77 @@ class SpikuitTransaction:
             return neuron_node_ref(neuron.id)
 
         if kind == KIND_SOURCE:
-            # v0.7.0 Circuit.add_source does not go through the event
-            # log — emitting from the adapter would desync the snapshot
-            # channel. Deferred until core grows source event support.
-            raise EConstraint(
-                "Spikuit v0.7.1 does not support source mutations via "
-                "Transaction.create (core does not emit source lifecycle "
-                "events). Attach sources through link(..., rel='derived_from') "
-                "once they exist on the underlying Circuit."
+            source = self._build_source(content=content, attrs=attrs)
+            with boundary():
+                self._store._bridge.run(
+                    self._store._circuit.add_source(source)
+                )
+            # Core's add_source is event-log-silent in v0.7.0; we
+            # inject a "source.add" event into the in-flight changeset
+            # ourselves so the adapter's rehydrator (which now
+            # recognises target_kind="source") sees it at commit time.
+            self._emit_source_event(
+                OP_SOURCE_ADD,
+                source.id,
+                after=source,
             )
+            return source_node_ref(source.id)
 
         raise EConstraint(f"unsupported kind for Spikuit: {kind!r}")
+
+    def _build_source(self, *, content: str, attrs: dict[str, Any]) -> Source:
+        """Translate AMKB Source attrs back onto a :class:`spikuit_core.Source`.
+
+        Inverse of :func:`spikuit_agents.amkb.mapping.source_to_node`.
+        AMKB-reserved keys (``content_ref``, ``content_hash``,
+        ``fetched_at``) promote to their native Source fields, while
+        ``spk:*`` keys drop their prefix. Unknown keys are dropped in
+        v0.7.1 (Source has no arbitrary-attr bag).
+        """
+        url = attrs.get("content_ref") or attrs.get("spk:storage_uri")
+        title = attrs.get("spk:title") or content or None
+        kwargs: dict[str, Any] = {}
+        if url and isinstance(url, str) and url.startswith(("http://", "https://")):
+            kwargs["url"] = url
+        elif url is not None:
+            kwargs["storage_uri"] = url
+        if title is not None:
+            kwargs["title"] = title
+        for amkb_key, spk_attr in (
+            ("spk:author", "author"),
+            ("spk:section", "section"),
+            ("spk:excerpt", "excerpt"),
+            ("spk:notes", "notes"),
+            ("spk:http_etag", "http_etag"),
+            ("spk:http_last_modified", "http_last_modified"),
+            ("spk:status", "status"),
+        ):
+            if amkb_key in attrs:
+                kwargs[spk_attr] = attrs[amkb_key]
+        if "content_hash" in attrs:
+            kwargs["content_hash"] = attrs["content_hash"]
+        source = Source(id=f"s-{_hex12()}", **kwargs)
+        return source
+
+    def _emit_source_event(
+        self,
+        op: str,
+        source_id: str,
+        *,
+        before: Source | None = None,
+        after: Source | None = None,
+    ) -> None:
+        """Append a source lifecycle event onto the in-flight core tx."""
+        core_tx = self._store._circuit.current_transaction
+        if core_tx is None:  # pragma: no cover — should never happen
+            raise EConstraint("no active core transaction to emit source event")
+        core_tx.emit(
+            op,
+            "source",
+            source_id,
+            before_json=msgspec.json.encode(before).decode() if before else None,
+            after_json=msgspec.json.encode(after).decode() if after else None,
+        )
 
     def rewrite(
         self, ref: NodeRef, *, content: str, reason: str,
@@ -253,11 +332,19 @@ class SpikuitTransaction:
         validate_concept_content(KIND_CONCEPT, content)
         with boundary():
             async def _do():
-                neuron = await self._store._circuit.get_neuron(raw)
+                neuron = await self._store._circuit.get_neuron(
+                    raw, include_retired=True,
+                )
                 if neuron is None:
                     from amkb.errors import ENodeNotFound
 
                     raise ENodeNotFound(f"node not found: {ref}", ref=ref)
+                if neuron.retired_at is not None:
+                    from amkb.errors import ENodeAlreadyRetired
+
+                    raise ENodeAlreadyRetired(
+                        f"node {ref} is retired", ref=ref,
+                    )
                 neuron.content = content
                 await self._store._circuit.update_neuron(neuron)
 
@@ -274,11 +361,34 @@ class SpikuitTransaction:
                 )
             return
         if raw.startswith("s-"):
-            raise EConstraint(
-                "Spikuit v0.7.1 does not support source retirement via "
-                "Transaction.retire (core does not emit source lifecycle "
-                "events)."
-            )
+            with boundary():
+                async def _do():
+                    source = await self._store._circuit.get_source(raw)
+                    if source is None or source.retired_at is not None:
+                        return  # idempotent
+                    before_snapshot = msgspec.structs.replace(source)
+                    retired_at = datetime.now(timezone.utc)
+                    # Core's ``update_source`` deliberately does not
+                    # touch retired_at (soft-retire is not part of its
+                    # public surface); write it directly so the event
+                    # snapshot and subsequent reads see ``state=retired``.
+                    from spikuit_core.db import _ts
+
+                    await self._store._circuit._db.conn.execute(
+                        "UPDATE source SET retired_at=? WHERE id=?",
+                        (_ts(retired_at), source.id),
+                    )
+                    await self._store._circuit._db.conn.commit()
+                    source.retired_at = retired_at
+                    self._emit_source_event(
+                        OP_SOURCE_RETIRE,
+                        source.id,
+                        before=before_snapshot,
+                        after=source,
+                    )
+
+                self._store._bridge.run(_do())
+            return
         raise EConstraint(f"unrecognized node ref prefix: {ref}")
 
     def merge(
@@ -310,24 +420,28 @@ class SpikuitTransaction:
         validate_merge_uniform(fetched)
         validate_concept_content(KIND_CONCEPT, content)
 
-        into_raw = raws[0]
-        source_raws = raws[1:]
+        # AMKB spec §3.2.4: merge MUST retire all k input refs and
+        # create a new target node. Spikuit's native merge picks one
+        # survivor, so the adapter creates a new neuron first and uses
+        # that as into_id — every original (including what would have
+        # been the survivor) ends up tombstoned. ``merge_neurons``
+        # appends the source contents onto the target, so we rewrite
+        # the final content back to ``content`` after the merge.
+        target_neuron = Neuron.create(content)
 
         with boundary():
             async def _do():
+                await self._store._circuit.add_neuron(target_neuron)
                 await self._store._circuit.merge_neurons(
-                    source_ids=source_raws, into_id=into_raw,
+                    source_ids=raws, into_id=target_neuron.id,
                 )
-                # Replace the appended content with the caller-supplied
-                # canonical form. Same changeset — auto_tx yields the
-                # active transaction rather than opening a new one.
-                target = await self._store._circuit.get_neuron(into_raw)
-                if target is not None and target.content != content:
-                    target.content = content
-                    await self._store._circuit.update_neuron(target)
+                merged = await self._store._circuit.get_neuron(target_neuron.id)
+                if merged is not None and merged.content != content:
+                    merged.content = content
+                    await self._store._circuit.update_neuron(merged)
 
             self._store._bridge.run(_do())
-        return neuron_node_ref(into_raw)
+        return neuron_node_ref(target_neuron.id)
 
     # -- Edge mutations ------------------------------------------------
 
@@ -345,7 +459,11 @@ class SpikuitTransaction:
             dst_node = self._store._bridge.run(self._store._get_node_async(dst))
         validate_edge_rel(rel, src_node, dst_node)
 
-        if rel == REL_DERIVED_FROM:
+        # Spikuit has one junction table (neuron↔source). All three
+        # concept→source rels (derived_from, attested_by,
+        # contradicted_by) land on attach_source — the rel distinction
+        # is v0.7.2+ work when we add a rel column to the junction.
+        if rel in (REL_DERIVED_FROM, REL_ATTESTED_BY, REL_CONTRADICTED_BY):
             if src_node.layer != LAYER_CONCEPT or dst_node.layer != LAYER_SOURCE:
                 raise EConstraint(
                     f"rel={rel!r} requires concept→source endpoints"

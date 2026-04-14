@@ -16,8 +16,11 @@ from collections.abc import Iterator
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
-from amkb.errors import EConstraint, EEdgeNotFound, ENodeNotFound
+from amkb.errors import EConstraint, EEdgeNotFound, EInvalid, ENodeNotFound
+from amkb.filters import And, Eq, In, Not, Or, Range
 from amkb.filters import evaluate as filter_evaluate
+
+_FILTER_VARIANTS: tuple[type, ...] = (Eq, In, Range, And, Or, Not)
 from amkb.refs import (
     ActorId,
     ChangeSetRef,
@@ -49,7 +52,6 @@ from spikuit_agents.amkb.mapping import (
     junction_edge,
     neuron_node_ref,
     neuron_to_node,
-    source_node_ref,
     source_to_node,
 )
 
@@ -99,10 +101,14 @@ class SpikuitStore:
     def begin(
         self, *, tag: str, actor: "amkb.Actor",
     ) -> "amkb.Transaction":
-        # Wired up by task #14.
+        """Open a transaction. Returns an already-entered handle so
+        callers can use it either with ``with`` or as a bare object
+        (spec §3.5.1)."""
         from spikuit_agents.amkb.transaction import SpikuitTransaction
 
-        return SpikuitTransaction(self, tag=tag, actor=actor)
+        tx = SpikuitTransaction(self, tag=tag, actor=actor)
+        tx.__enter__()
+        return tx
 
     # -- Read-only queries ---------------------------------------------
 
@@ -148,6 +154,10 @@ class SpikuitStore:
         limit: int = 100,
     ) -> list["amkb.NodeRef"]:
         """Graph walk from ``ref`` (L4a). See design doc §5.3 / §5.6."""
+        if depth <= 0:
+            raise EInvalid(f"depth must be positive, got {depth}")
+        if limit <= 0:
+            raise EInvalid(f"limit must be positive, got {limit}")
         with boundary():
             return self._bridge.run(
                 self._neighbors_async(
@@ -169,6 +179,13 @@ class SpikuitStore:
         filters: "Filter | None" = None,
     ) -> "list[amkb.RetrievalHit]":
         """Intent-driven retrieval (L4b). See design doc §5.9."""
+        if k <= 0:
+            raise EInvalid(f"k must be positive, got {k}")
+        if filters is not None and not isinstance(filters, _FILTER_VARIANTS):
+            raise EInvalid(
+                f"filters must be a closed amkb.Filter variant "
+                f"(Eq/In/Range/And/Or/Not), got {type(filters).__name__}"
+            )
         with boundary():
             return self._bridge.run(
                 self._retrieve_async(intent, k=k, layer=layer, filters=filters)
@@ -350,20 +367,11 @@ class SpikuitStore:
                         if len(results) >= limit:
                             return results
 
-                # Concept → source junction edges (only for out/both).
-                if direction in ("out", "both") and (
-                    wanted_rels is None or "derived_from" in wanted_rels
-                ):
-                    source_ids = await self._circuit.get_sources_for_neuron(nid)
-                    for src in source_ids:
-                        if src.id in seen:
-                            continue
-                        if not include_retired and src.retired_at is not None:
-                            continue
-                        seen.add(src.id)
-                        results.append(source_node_ref(src.id))
-                        if len(results) >= limit:
-                            return results
+                # Junction edges (concept → source) are deliberately
+                # NOT crossed: AMKB §3.4.3 forbids traversal from
+                # returning kind=source nodes. Callers that want the
+                # sources attached to a concept should use get_edge /
+                # find_by_attr on the junction side.
             frontier = next_frontier
 
         return results

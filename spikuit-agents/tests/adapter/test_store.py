@@ -168,7 +168,10 @@ def test_neighbors_rel_filter_drops_mismatches(store: SpikuitStore) -> None:
     assert store.neighbors(n1.id, rel="requires") == [n2.id]
 
 
-def test_neighbors_crosses_to_source_via_derived_from(store: SpikuitStore) -> None:
+def test_neighbors_does_not_return_source_kind_nodes(
+    store: SpikuitStore,
+) -> None:
+    """Per AMKB §3.4.3, walks MUST NOT surface kind=source neighbors."""
     async def seed():
         n = Neuron.create("# A", type="concept", domain="math")
         s = Source(title="Paper", url="https://x.com/a")
@@ -179,7 +182,7 @@ def test_neighbors_crosses_to_source_via_derived_from(store: SpikuitStore) -> No
 
     n, s = store._bridge.run(seed())
     hits = store.neighbors(n.id, direction="out")
-    assert s.id in hits
+    assert s.id not in [str(ref) for ref in hits]
 
 
 # ---------------------------------------------------------------------------

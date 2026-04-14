@@ -132,18 +132,25 @@ def test_create_concept_round_trips(store: SpikuitStore, actor: Actor) -> None:
     assert node.attrs["domain"] == "math"
 
 
-def test_create_source_raises_econstraint(
+def test_create_source_round_trips(
     store: SpikuitStore, actor: Actor,
 ) -> None:
     with store.begin(tag="t", actor=actor) as tx:
-        with pytest.raises(EConstraint):
-            tx.create(
-                kind=KIND_SOURCE,
-                layer=LAYER_SOURCE,
-                content="Paper",
-                attrs={"content_ref": "https://x.com/a"},
-            )
-        tx.abort()
+        ref = tx.create(
+            kind=KIND_SOURCE,
+            layer=LAYER_SOURCE,
+            content="Paper",
+            attrs={"content_ref": "https://x.com/a"},
+        )
+        cs = tx.commit()
+    assert str(ref).startswith("s-")
+    node = store.get_node(ref)
+    assert node.kind == KIND_SOURCE
+    assert node.attrs.get("content_ref") == "https://x.com/a"
+    assert any(
+        e.kind == "node.created" and str(e.target).startswith("s-")
+        for e in cs.events
+    )
 
 
 def test_rewrite_updates_content_and_emits_event(
@@ -180,15 +187,21 @@ def test_retire_soft_retires_and_emits_event(
     assert store.get_node(ref).state == "retired"
 
 
-def test_retire_source_ref_raises_econstraint(
+def test_retire_source_soft_retires_and_emits_event(
     store: SpikuitStore, actor: Actor,
 ) -> None:
-    from amkb.refs import NodeRef
-
     with store.begin(tag="t", actor=actor) as tx:
-        with pytest.raises(EConstraint):
-            tx.retire(NodeRef("s-nope"), reason="x")
-        tx.abort()
+        ref = tx.create(
+            kind=KIND_SOURCE,
+            layer=LAYER_SOURCE,
+            content="Paper",
+            attrs={"content_ref": "https://x.com/a"},
+        )
+    with store.begin(tag="t.retire", actor=actor) as tx:
+        tx.retire(ref, reason="dup")
+        cs = tx.commit()
+    assert any(e.kind == "node.retired" for e in cs.events)
+    assert store.get_node(ref).state == "retired"
 
 
 def test_merge_collapses_concepts_and_replaces_content(
@@ -207,9 +220,12 @@ def test_merge_collapses_concepts_and_replaces_content(
         survivor = tx.merge(
             [a, b], content="# Unified", reason="dup",
         )
-    assert survivor == a
+    # Spec §3.2.4: both originals retired, survivor is a fresh ref.
+    assert survivor not in (a, b)
     node = store.get_node(survivor)
     assert node.content == "# Unified"
+    assert node.state == "live"
+    assert store.get_node(a).state == "retired"
     assert store.get_node(b).state == "retired"
 
 
