@@ -50,6 +50,7 @@ members = [
 spikuit-core = { workspace = true }
 spikuit-agents = { workspace = true }
 spikuit-cli = { workspace = true }
+amkb = { path = "../amkb/amkb-sdk", editable = true }
 
 [dependency-groups]
 dev = [
