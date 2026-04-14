@@ -310,3 +310,52 @@ async def test_no_filters_returns_all(circuit: Circuit):
 
     results = await circuit.retrieve("topic")
     assert len(results) == 2
+
+
+# -------------------------------------------------------------------
+# retrieve_scored — AMKB adapter path
+# -------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_retrieve_scored_returns_monotone_scores(circuit: Circuit):
+    """retrieve_scored returns (neuron, score) pairs sorted by score desc."""
+    n1 = Neuron.create("# Functor\n\nA mapping between categories.")
+    n2 = Neuron.create("# Monad\n\nA functor with extra structure.")
+    n3 = Neuron.create("# Banana\n\nA yellow fruit.")
+    for n in [n1, n2, n3]:
+        await circuit.add_neuron(n)
+
+    scored = await circuit.retrieve_scored("functor")
+    assert len(scored) >= 2
+
+    # Every entry is a (Neuron, float) pair.
+    for item in scored:
+        assert isinstance(item, tuple) and len(item) == 2
+        neuron, score = item
+        assert isinstance(neuron, Neuron)
+        assert isinstance(score, float)
+        assert score > 0.0
+
+    # Sorted by score descending.
+    scores = [s for _, s in scored]
+    assert scores == sorted(scores, reverse=True)
+
+
+@pytest.mark.asyncio
+async def test_retrieve_scored_and_retrieve_agree(circuit: Circuit):
+    """retrieve() is a shim over retrieve_scored(); order must match."""
+    for i in range(5):
+        await circuit.add_neuron(
+            Neuron.create(f"# Topic {i}\n\nDescription about topic {i}.")
+        )
+
+    plain = await circuit.retrieve("topic")
+    scored = await circuit.retrieve_scored("topic")
+    assert [n.id for n in plain] == [n.id for n, _ in scored]
+
+
+@pytest.mark.asyncio
+async def test_retrieve_scored_empty_query(circuit: Circuit):
+    assert await circuit.retrieve_scored("") == []
+    assert await circuit.retrieve_scored("   ") == []

@@ -1136,6 +1136,29 @@ class Circuit:
     ) -> list[Neuron]:
         """Retrieve neurons matching a query with graph-weighted scoring.
 
+        Thin wrapper over :meth:`retrieve_scored` that drops per-hit
+        scores. CLI and session consumers that only need the neuron
+        objects use this method. Callers that need scores (e.g. the
+        AMKB adapter populating ``RetrievalHit.score``) call
+        :meth:`retrieve_scored` directly.
+
+        See :meth:`retrieve_scored` for the scoring formula and
+        argument semantics.
+        """
+        scored = await self.retrieve_scored(
+            query, limit=limit, filters=filters,
+        )
+        return [n for n, _ in scored]
+
+    async def retrieve_scored(
+        self,
+        query: str,
+        *,
+        limit: int = 10,
+        filters: dict[str, str] | None = None,
+    ) -> list[tuple[Neuron, float]]:
+        """Retrieve neurons with their raw graph-weighted scores.
+
         Scoring formula::
 
             score = max(keyword_sim, semantic_sim)
@@ -1145,15 +1168,26 @@ class Circuit:
         otherwise only keyword matching is used. ``boost`` is accumulated
         through [`QABotSession`][spikuit_core.QABotSession] feedback.
 
+        The returned score is an **opaque relevance indicator**: higher
+        means more relevant, but the number is not a probability, not a
+        cosine similarity, and is not comparable across different
+        ``retrieve_scored`` calls (centrality, pressure, and boost state
+        drift over time). Consumers that want portable comparability
+        SHOULD rely on list order only. The list is sorted by score
+        descending, so list position is always a valid ranking.
+
         Args:
             query: Search query text.
             limit: Maximum number of results.
-            filters: Key-value filters. ``type`` and ``domain`` filter on the
-                neuron table; other keys filter on source filterable metadata.
-                Strict semantics: neurons without the key are excluded.
+            filters: Key-value filters. ``type`` and ``domain`` filter on
+                the neuron table; other keys filter on source filterable
+                metadata. Strict semantics: neurons without the key are
+                excluded.
 
         Returns:
-            List of matching neurons, sorted by score descending.
+            List of ``(neuron, score)`` pairs, sorted by score
+            descending. Scores are guaranteed to be monotone with list
+            order.
         """
         if not query.strip():
             return []
@@ -1261,12 +1295,12 @@ class Circuit:
                         scored[i] = (s * (1.0 + self.plasticity.community_weight), n)
 
         scored.sort(key=lambda x: x[0], reverse=True)
-        results = [n for _, n in scored[:limit]]
+        top = scored[:limit]
 
-        if results:
-            await self._db.log_retrieve(query, [n.id for n in results])
+        if top:
+            await self._db.log_retrieve(query, [n.id for _, n in top])
 
-        return results
+        return [(n, s) for s, n in top]
 
     # -- Ensemble -----------------------------------------------------------
 
