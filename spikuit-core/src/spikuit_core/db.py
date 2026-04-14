@@ -106,6 +106,7 @@ CREATE TABLE IF NOT EXISTS source (
     content_hash TEXT,
     notes TEXT,
     accessed_at TEXT,
+    retired_at TEXT,
     created_at TEXT NOT NULL
 );
 
@@ -215,8 +216,10 @@ class Database:
             # AMKB plumbing (v0.7.0): soft-retire columns.
             "ALTER TABLE neuron ADD COLUMN retired_at TEXT",
             "ALTER TABLE synapse ADD COLUMN retired_at TEXT",
+            "ALTER TABLE source ADD COLUMN retired_at TEXT",
             "CREATE INDEX IF NOT EXISTS idx_neuron_retired_at ON neuron(retired_at)",
             "CREATE INDEX IF NOT EXISTS idx_synapse_retired_at ON synapse(retired_at)",
+            "CREATE INDEX IF NOT EXISTS idx_source_retired_at ON source(retired_at)",
         ]
         for sql in migrations:
             try:
