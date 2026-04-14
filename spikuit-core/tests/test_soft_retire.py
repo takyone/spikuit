@@ -124,3 +124,37 @@ async def test_retire_inside_explicit_transaction(circuit):
     row = await circuit._db.get_changeset(tx.id)
     assert row["status"] == "committed"
     assert row["tag"] == "batch-cleanup"
+
+
+@pytest.mark.asyncio
+async def test_circuit_get_neuron_include_retired(circuit):
+    n = Neuron.create("x")
+    await circuit.add_neuron(n)
+    await circuit.remove_neuron(n.id)
+
+    # Default path hides the retired neuron.
+    assert await circuit.get_neuron(n.id) is None
+    # Adapter-facing path resolves retired references.
+    resolved = await circuit.get_neuron(n.id, include_retired=True)
+    assert resolved is not None
+    assert resolved.id == n.id
+
+
+@pytest.mark.asyncio
+async def test_circuit_get_synapse_include_retired(circuit):
+    a = Neuron.create("A")
+    b = Neuron.create("B")
+    await circuit.add_neuron(a)
+    await circuit.add_neuron(b)
+    await circuit.add_synapse(a.id, b.id, SynapseType.RELATES_TO)
+
+    await circuit.remove_neuron(a.id)  # cascade-retires the synapse
+
+    assert await circuit.get_synapse(
+        a.id, b.id, SynapseType.RELATES_TO,
+    ) is None
+    resolved = await circuit.get_synapse(
+        a.id, b.id, SynapseType.RELATES_TO, include_retired=True,
+    )
+    assert resolved is not None
+    assert resolved.pre == a.id and resolved.post == b.id

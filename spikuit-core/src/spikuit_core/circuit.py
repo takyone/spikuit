@@ -333,8 +333,12 @@ class Circuit:
 
         return neuron
 
-    async def get_neuron(self, neuron_id: str) -> Neuron | None:
-        return await self._db.get_neuron(neuron_id)
+    async def get_neuron(
+        self, neuron_id: str, *, include_retired: bool = False,
+    ) -> Neuron | None:
+        return await self._db.get_neuron(
+            neuron_id, include_retired=include_retired,
+        )
 
     async def list_neurons(self, **kwargs: object) -> list[Neuron]:
         return await self._db.list_neurons(**kwargs)  # type: ignore[arg-type]
@@ -519,9 +523,12 @@ class Circuit:
         return created
 
     async def get_synapse(
-        self, pre: str, post: str, type: SynapseType
+        self, pre: str, post: str, type: SynapseType,
+        *, include_retired: bool = False,
     ) -> Synapse | None:
-        return await self._db.get_synapse(pre, post, type)
+        return await self._db.get_synapse(
+            pre, post, type, include_retired=include_retired,
+        )
 
     async def remove_synapse(
         self, pre: str, post: str, type: SynapseType
